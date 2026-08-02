@@ -2,7 +2,11 @@
 
 Local QA console for any website. Run **Playwright** suites, **Lighthouse**, and full-site audits from a browser UI — or from the CLI.
 
-Open **http://localhost:4173** after `npm start`.
+```bash
+npm start
+```
+
+Open **http://localhost:4173**
 
 ## Features
 
@@ -24,13 +28,7 @@ cp .env.example .env
 
 Set `BASE_URL` in `.env` to the site under test.
 
-Browsers are installed **once** into Playwright’s shared cache (same place for CLI and the console). Use either:
-
-```bash
-npx playwright install
-```
-
-or **Install browsers** in the console — not both.
+Browsers download **once** into Playwright’s shared cache (for example `%LOCALAPPDATA%\ms-playwright` on Windows). The console **Install browsers** button uses that same cache — do not install twice.
 
 ## Web console
 
@@ -54,6 +52,8 @@ npm run stop
 4. Run a suite (**Smoke**, **Lighthouse**, **Audit entire site**, etc.)
 5. Download **Summary** / **Full** reports when finished
 
+If the tools panel says browsers are missing, click **Install browsers** once (skip this if you already ran `npx playwright install`).
+
 ### Reports on disk
 
 | Kind | Files |
@@ -73,7 +73,7 @@ npm run stop
 | `npm run test:ui` | Interactive Playwright UI |
 | `npm run test:headed` | Visible browser |
 | `npm run test:debug` | Step-through debug |
-| `npm run test:lighthouse` | Lighthouse for `BASE_URL` (or all URLs when `SITE_RUN_SCOPE=all`) |
+| `npm run test:lighthouse` | Lighthouse for `BASE_URL` (use `SITE_RUN_SCOPE=all` for every saved URL) |
 | `npm run test:discover-urls` | Crawl site → `data/site-urls.json` |
 | `npm run test:site-audit` | Audit the saved URL list |
 | `npm run test:smoke-all` | Smoke on every saved URL |
