@@ -11,11 +11,8 @@ const toolsHeading = document.querySelector('#tools-heading');
 const installBtn = document.querySelector('#install-tools');
 const reportPanel = document.querySelector('#report-panel');
 const reportSummary = document.querySelector('#report-summary');
-const downloadReportBtn = document.querySelector('#download-report');
 const downloadReportTopBtn = document.querySelector('#download-report-top');
-const downloadMdBtn = document.querySelector('#download-md');
-const downloadBugsBtn = document.querySelector('#download-bugs');
-const openReportLink = document.querySelector('#open-report');
+const reportHeading = document.querySelector('#report-heading');
 
 const DESCRIPTIONS = {
   smoke: 'Page load & basic content',
@@ -33,6 +30,11 @@ const DESCRIPTIONS = {
 let running = false;
 let toolsReady = false;
 let latestKind = 'client';
+let latestReport = null;
+
+function actionEl(name) {
+  return document.querySelector(`[data-report-action="${name}"]`);
+}
 
 function setStatus(message, kind = '') {
   urlStatus.textContent = message;
@@ -69,49 +71,112 @@ function downloadFile(url, filename) {
   link.remove();
 }
 
-function setDownloadEnabled(report) {
+function reportTargets(kind) {
+  if (kind === 'lighthouse') {
+    return {
+      summaryHtml: '/reports/lighthouse-summary.html',
+      summaryName: 'lighthouse-summary.html',
+      summaryMd: null,
+      fullHtml: '/reports/lighthouse-full.html',
+      fullName: 'lighthouse-full.html',
+      fullMd: null,
+      bugsHtml: null,
+      bugsMd: null,
+    };
+  }
+
+  return {
+    summaryHtml: '/reports/client-report.html',
+    summaryName: 'website-qa-summary.html',
+    summaryMd: '/reports/client-report.md',
+    fullHtml: '/reports/bug-reports.html',
+    fullName: 'website-qa-full-bugs.html',
+    fullMd: '/reports/bug-reports.md',
+    bugsHtml: '/reports/bug-reports.html',
+    bugsMd: '/reports/bug-reports.md',
+  };
+}
+
+function setActionEnabled(el, enabled) {
+  if (!el) return;
+  if (el.tagName === 'A') {
+    el.classList.toggle('is-disabled', !enabled);
+    el.style.pointerEvents = enabled ? '' : 'none';
+    el.style.opacity = enabled ? '' : '0.45';
+    if (!enabled) el.removeAttribute('href');
+  } else {
+    el.disabled = !enabled;
+  }
+}
+
+function wireReportActions(report) {
   const ready = Boolean(report?.available);
   const kind = report?.latestKind || latestKind;
   const bugCount = report?.bugCount ?? 0;
-  const isLighthouse = kind === 'lighthouse';
+  const targets = reportTargets(kind);
+  const stamp = Date.now();
 
   latestKind = kind;
+  latestReport = report;
 
-  if (downloadReportBtn) {
-    downloadReportBtn.disabled = !ready;
-    downloadReportBtn.textContent = isLighthouse
-      ? 'Download Lighthouse reports'
-      : 'Download report';
-  }
+  const hasBugs = kind !== 'lighthouse' && bugCount > 0;
+  const hasSummaryMd = Boolean(targets.summaryMd);
+  const hasFullMd = kind === 'lighthouse' ? false : hasBugs;
+  const hasFullHtml =
+    kind === 'lighthouse' ? true : hasBugs || Boolean(targets.summaryHtml);
+
   if (downloadReportTopBtn) {
     downloadReportTopBtn.disabled = !ready;
     downloadReportTopBtn.classList.toggle('is-ready', ready);
-    downloadReportTopBtn.textContent = isLighthouse
-      ? 'Download Lighthouse'
-      : 'Download report';
   }
-  if (downloadMdBtn) {
-    downloadMdBtn.disabled = !ready || isLighthouse;
-    downloadMdBtn.hidden = isLighthouse;
+
+  if (reportHeading) {
+    reportHeading.textContent =
+      kind === 'lighthouse' ? 'Lighthouse report ready' : 'Client report ready';
   }
-  if (downloadBugsBtn) {
-    const showBugs = ready && !isLighthouse;
-    downloadBugsBtn.hidden = isLighthouse;
-    downloadBugsBtn.disabled = !(showBugs && bugCount > 0);
-    downloadBugsBtn.textContent =
-      bugCount > 0 ? `Download bug tickets (${bugCount})` : 'Download bug tickets';
+
+  // Summary set
+  setActionEnabled(actionEl('summary-download'), ready);
+  setActionEnabled(actionEl('summary-open'), ready);
+  setActionEnabled(actionEl('summary-md'), ready && hasSummaryMd);
+  setActionEnabled(actionEl('summary-bugs'), ready && hasBugs);
+  if (actionEl('summary-bugs')) {
+    actionEl('summary-bugs').textContent = hasBugs
+      ? `Download bug tickets (${bugCount})`
+      : 'Download bug tickets';
+  }
+  if (actionEl('summary-open') && ready) {
+    actionEl('summary-open').href = `${targets.summaryHtml}?t=${stamp}`;
+  }
+
+  // Full set
+  setActionEnabled(actionEl('full-download'), ready && hasFullHtml);
+  setActionEnabled(actionEl('full-open'), ready && hasFullHtml);
+  setActionEnabled(actionEl('full-md'), ready && hasFullMd);
+  setActionEnabled(actionEl('full-bugs'), ready && hasBugs);
+  if (actionEl('full-bugs')) {
+    actionEl('full-bugs').textContent = hasBugs
+      ? `Download bug tickets (${bugCount})`
+      : 'Download bug tickets';
+  }
+  if (actionEl('full-open') && ready && hasFullHtml) {
+    const fullUrl =
+      kind === 'lighthouse' || hasBugs ? targets.fullHtml : targets.summaryHtml;
+    actionEl('full-open').href = `${fullUrl}?t=${stamp}`;
   }
 }
 
 function downloadLatestReport() {
+  const targets = reportTargets(latestKind);
   if (latestKind === 'lighthouse') {
-    downloadFile('/reports/lighthouse-summary.html', 'lighthouse-summary.html');
-    setTimeout(() => {
-      downloadFile('/reports/lighthouse-full.html', 'lighthouse-full.html');
-    }, 400);
+    downloadFile(targets.summaryHtml, targets.summaryName);
+    setTimeout(() => downloadFile(targets.fullHtml, targets.fullName), 400);
     return;
   }
-  downloadFile('/reports/client-report.html', 'website-qa-report.html');
+  downloadFile(targets.summaryHtml, targets.summaryName);
+  if ((latestReport?.bugCount ?? 0) > 0) {
+    setTimeout(() => downloadFile(targets.fullHtml, targets.fullName), 400);
+  }
 }
 
 async function refreshReport({ highlight = false, retries = 8 } = {}) {
@@ -134,7 +199,7 @@ async function refreshReport({ highlight = false, retries = 8 } = {}) {
 
 function updateReportUi(report, { highlight = false } = {}) {
   const ready = Boolean(report?.available);
-  setDownloadEnabled(report || { available: false });
+  wireReportActions(report || { available: false });
 
   if (!ready) {
     reportPanel.hidden = true;
@@ -156,17 +221,7 @@ function updateReportUi(report, { highlight = false } = {}) {
     const bugText = bugCount ? ` · ${bugCount} bug ticket(s)` : '';
     reportSummary.textContent = `${s.overall} · ${s.website} · ${s.totals.passed}/${s.totals.total} checks passed${bugText} · ${new Date(s.endedAt).toLocaleString()}`;
   } else {
-    reportSummary.textContent = 'Your report is ready. Use Download report / Open in browser.';
-  }
-
-  if (openReportLink) {
-    if (kind === 'lighthouse') {
-      openReportLink.href = `/reports/lighthouse-full.html?t=${Date.now()}`;
-      openReportLink.textContent = 'Open in browser';
-    } else {
-      openReportLink.href = `/reports/client-report.html?t=${Date.now()}`;
-      openReportLink.textContent = 'Open in browser';
-    }
+    reportSummary.textContent = 'Report ready. Use Summary or Full actions below.';
   }
 
   if (highlight) {
@@ -376,13 +431,35 @@ installBtn.addEventListener('click', installTools);
 clearBtn.addEventListener('click', () => {
   logEl.textContent = '';
 });
-downloadReportBtn.addEventListener('click', downloadLatestReport);
 downloadReportTopBtn?.addEventListener('click', downloadLatestReport);
-downloadMdBtn.addEventListener('click', () => {
-  downloadFile('/reports/client-report.md', 'website-qa-report.md');
-});
-downloadBugsBtn?.addEventListener('click', () => {
-  downloadFile('/reports/bug-reports.html', 'website-qa-bug-tickets.html');
+
+reportPanel?.addEventListener('click', (event) => {
+  const el = event.target.closest('[data-report-action]');
+  if (!el || el.disabled || el.classList.contains('is-disabled')) return;
+
+  const action = el.dataset.reportAction;
+  const targets = reportTargets(latestKind);
+  const bugCount = latestReport?.bugCount ?? 0;
+
+  if (action === 'summary-download') {
+    downloadFile(targets.summaryHtml, targets.summaryName);
+  } else if (action === 'summary-md' && targets.summaryMd) {
+    downloadFile(targets.summaryMd, 'website-qa-summary.md');
+  } else if (action === 'summary-bugs' && targets.bugsHtml && bugCount > 0) {
+    downloadFile(targets.bugsHtml, 'website-qa-bug-tickets.html');
+  } else if (action === 'full-download') {
+    if (latestKind === 'lighthouse') {
+      downloadFile(targets.fullHtml, targets.fullName);
+    } else if (bugCount > 0) {
+      downloadFile(targets.fullHtml, targets.fullName);
+    } else {
+      downloadFile(targets.summaryHtml, targets.summaryName);
+    }
+  } else if (action === 'full-md' && targets.fullMd && bugCount > 0) {
+    downloadFile(targets.fullMd, 'website-qa-full-bugs.md');
+  } else if (action === 'full-bugs' && targets.bugsHtml && bugCount > 0) {
+    downloadFile(targets.bugsHtml, 'website-qa-bug-tickets.html');
+  }
 });
 
 await loadConfig();
