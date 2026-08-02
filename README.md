@@ -24,8 +24,10 @@ Open **http://localhost:4173**
 2. Paste a website URL and save it.
 3. Run a suite (Smoke, A11y, API, etc.). Live output streams on the page.
 4. Open the **Client report** (HTML) or download **Markdown** to send to your client.
+5. Use **Lighthouse** separately for Performance / SEO / Best Practices / Accessibility scores.
 
-Client reports are written to `reports/client-report.html` and `reports/client-report.md` (plain language, not the technical Playwright UI).
+Client reports are written to `reports/client-report.html` and `reports/client-report.md`.  
+Lighthouse reports: `reports/lighthouse-summary.html` (simple) and `reports/lighthouse-full.html` (full detail).
 
 ## Run tests (CLI)
 

@@ -57,6 +57,11 @@ const SUITES = {
       '--project=chromium',
     ],
   },
+  lighthouse: {
+    label: 'Lighthouse',
+    runner: 'lighthouse',
+    args: [path.join(root, 'scripts', 'run-lighthouse.mjs')],
+  },
   all: {
     label: 'All suites',
     args: ['test', '--project=chromium'],
@@ -138,27 +143,54 @@ function getClientReport() {
   const json = path.join(reportsDir, 'client-report.json');
   const bugsHtml = path.join(reportsDir, 'bug-reports.html');
   const bugsMd = path.join(reportsDir, 'bug-reports.md');
-  if (!fs.existsSync(html)) {
+  const lighthouseSummary = path.join(reportsDir, 'lighthouse-summary.html');
+  const lighthouseFull = path.join(reportsDir, 'lighthouse-full.html');
+  const lighthouseJson = path.join(reportsDir, 'lighthouse.json');
+
+  const hasClient = fs.existsSync(html);
+  const hasLighthouse = fs.existsSync(lighthouseSummary);
+
+  if (!hasClient && !hasLighthouse) {
     return { available: false };
   }
+
   let summary = null;
-  if (fs.existsSync(json)) {
+  if (hasClient && fs.existsSync(json)) {
     try {
       summary = JSON.parse(fs.readFileSync(json, 'utf8'));
     } catch {
       summary = null;
     }
   }
+
+  let lighthouse = null;
+  if (hasLighthouse && fs.existsSync(lighthouseJson)) {
+    try {
+      lighthouse = JSON.parse(fs.readFileSync(lighthouseJson, 'utf8'));
+    } catch {
+      lighthouse = null;
+    }
+  }
+
+  const updatedAt = hasClient
+    ? fs.statSync(html).mtime.toISOString()
+    : fs.statSync(lighthouseSummary).mtime.toISOString();
+
   return {
     available: true,
-    htmlUrl: '/reports/client-report.html',
-    mdUrl: '/reports/client-report.md',
-    jsonUrl: '/reports/client-report.json',
+    htmlUrl: hasClient ? '/reports/client-report.html' : null,
+    mdUrl: hasClient ? '/reports/client-report.md' : null,
+    jsonUrl: hasClient ? '/reports/client-report.json' : null,
     bugsHtmlUrl: fs.existsSync(bugsHtml) ? '/reports/bug-reports.html' : null,
     bugsMdUrl: fs.existsSync(bugsMd) ? '/reports/bug-reports.md' : null,
+    lighthouseSummaryUrl: hasLighthouse ? '/reports/lighthouse-summary.html' : null,
+    lighthouseFullUrl: fs.existsSync(lighthouseFull)
+      ? '/reports/lighthouse-full.html'
+      : null,
     bugCount: summary?.totals?.bugs ?? summary?.bugs?.length ?? 0,
     summary,
-    updatedAt: fs.statSync(html).mtime.toISOString(),
+    lighthouse,
+    updatedAt,
   };
 }
 
@@ -220,12 +252,11 @@ function filterLogNoise(text) {
     .join('\n');
 }
 
-function spawnPlaywright(args, { baseURL, label, suiteKey, kind }) {
+function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner }) {
   if (activeRun) {
     return { ok: false, error: 'Another task is already in progress' };
   }
 
-  const { command, argsPrefix } = playwrightCommand();
   const env = {
     ...process.env,
     PLAYWRIGHT_BROWSERS_PATH: browsersDir,
@@ -242,7 +273,18 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind }) {
 
   fs.mkdirSync(browsersDir, { recursive: true });
 
-  const child = spawn(command, [...argsPrefix, ...args], {
+  let command;
+  let commandArgs;
+  if (runner === 'lighthouse') {
+    command = process.execPath;
+    commandArgs = args;
+  } else {
+    const { command: pwCommand, argsPrefix } = playwrightCommand();
+    command = pwCommand;
+    commandArgs = [...argsPrefix, ...args];
+  }
+
+  const child = spawn(command, commandArgs, {
     cwd: root,
     env,
   });
@@ -265,9 +307,10 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind }) {
   child.on('close', (code) => {
     activeRun = null;
     const tools = getToolsStatus();
-    // Small delay so the client reporter can finish writing files.
+    // Small delay so reporters can finish writing files.
     setTimeout(() => {
-      const report = kind === 'test' ? getClientReport() : { available: false };
+      const report =
+        kind === 'test' || kind === 'lighthouse' ? getClientReport() : { available: false };
       broadcast('run-end', {
         suite: suiteKey,
         label,
@@ -293,6 +336,7 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind }) {
       code: 1,
       ok: false,
       tools: getToolsStatus(),
+      report: { available: false },
     });
   });
 
@@ -306,7 +350,17 @@ function runSuite(suiteKey) {
   }
 
   const tools = getToolsStatus();
-  if (!tools.installed) {
+  const chromium = tools.browsers.find((b) => b.id === 'chromium');
+  if (suite.runner === 'lighthouse') {
+    if (!chromium?.installed) {
+      return {
+        ok: false,
+        error:
+          'Chromium is not installed in this repo yet. Use Install browsers first.',
+        tools,
+      };
+    }
+  } else if (!tools.installed) {
     return {
       ok: false,
       error:
@@ -319,7 +373,8 @@ function runSuite(suiteKey) {
     baseURL: readBaseUrl(),
     label: suite.label,
     suiteKey,
-    kind: 'test',
+    kind: suite.runner === 'lighthouse' ? 'lighthouse' : 'test',
+    runner: suite.runner,
   });
 }
 
@@ -374,7 +429,10 @@ const server = http.createServer(async (req, res) => {
       pathname === '/reports/client-report.md' ||
       pathname === '/reports/client-report.json' ||
       pathname === '/reports/bug-reports.html' ||
-      pathname === '/reports/bug-reports.md')
+      pathname === '/reports/bug-reports.md' ||
+      pathname === '/reports/lighthouse-summary.html' ||
+      pathname === '/reports/lighthouse-full.html' ||
+      pathname === '/reports/lighthouse.json')
   ) {
     const name = path.basename(pathname);
     const download = url.searchParams.get('download') === '1';
