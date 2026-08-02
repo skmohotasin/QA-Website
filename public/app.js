@@ -246,6 +246,10 @@ async function refreshReport({ highlight = false, retries = 8 } = {}) {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const res = await fetch(`/api/report?t=${Date.now()}`);
+      if (!res.ok) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        continue;
+      }
       const report = await res.json();
       if (report?.available) {
         updateReportUi(report, { highlight });
@@ -256,7 +260,6 @@ async function refreshReport({ highlight = false, retries = 8 } = {}) {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  updateReportUi({ available: false });
   return null;
 }
 
@@ -345,6 +348,11 @@ async function loadConfig() {
   urlInput.value = data.baseURL || '';
   updateToolsUi(data.tools);
   updateSiteUrlsUi(data.siteUrls);
+  if (data.report?.available) {
+    updateReportUi(data.report);
+  } else {
+    updateReportUi({ available: false });
+  }
   await refreshReport();
   renderSuites(data.suites || []);
   setRunning(Boolean(data.running));

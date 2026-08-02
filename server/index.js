@@ -489,6 +489,10 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, getSiteUrlsStatus());
   }
 
+  if (req.method === 'GET' && pathname === '/api/report') {
+    return sendJson(res, 200, getClientReport());
+  }
+
   if (req.method === 'GET' && pathname === '/data/site-urls.json') {
     if (!fs.existsSync(siteUrlsPath)) {
       return sendJson(res, 404, { error: 'URL list not found. Run Find all URLs first.' });
