@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
+    "stop": "node scripts/stop-server.mjs",
     "ui": "node server/index.js",
     "test": "playwright test",
     "test:ui": "playwright test --ui",

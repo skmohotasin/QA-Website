@@ -609,16 +609,67 @@ const server = http.createServer(async (req, res) => {
 server.on('error', (err) => {
   if (err && err.code === 'EADDRINUSE') {
     console.error(
-      `Port ${PORT} is already in use. Stop the other process, or run with PORT=4174 npm start`,
+      `Port ${PORT} is already in use. Run: npm run stop`,
     );
     process.exit(1);
   }
   throw err;
 });
 
+const pidPath = path.join(root, '.qa-server.pid');
+process.title = 'qa-website';
+
+function writePidFile() {
+  try {
+    fs.writeFileSync(pidPath, String(process.pid), 'utf8');
+  } catch {
+    // ignore
+  }
+}
+
+function clearPidFile() {
+  try {
+    if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
+  } catch {
+    // ignore
+  }
+}
+
+function shutdown(signal) {
+  console.log(`\nShutting down QA Website (${signal || 'exit'})…`);
+  try {
+    if (activeRun) {
+      activeRun.kill();
+      activeRun = null;
+    }
+  } catch {
+    // ignore
+  }
+  clearPidFile();
+  try {
+    server.close(() => process.exit(0));
+  } catch {
+    process.exit(0);
+  }
+  // Force exit if close hangs (open SSE clients).
+  setTimeout(() => process.exit(0), 1500).unref();
+}
+
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) {
+  try {
+    process.on(signal, () => shutdown(signal));
+  } catch {
+    // signal may be unsupported on this platform
+  }
+}
+
+process.on('exit', clearPidFile);
+
 server.listen(PORT, () => {
+  writePidFile();
   const tools = getToolsStatus();
   console.log(`QA Website console → http://localhost:${PORT}`);
+  console.log(`PID ${process.pid} (stops with this terminal / VS Code close)`);
   console.log(
     tools.installed
       ? `Browsers: ready (${browsersDir})`

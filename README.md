@@ -20,6 +20,12 @@ npm start
 
 Open **http://localhost:4173**
 
+Start the console from a **VS Code / Cursor terminal** (or Terminal → Run Task → **QA Website: Start console**). Closing that terminal or VS Code stops the server. If a leftover process remains, run:
+
+```bash
+npm run stop
+```
+
 1. If browsers are missing, click **Install browsers** (downloads into `.playwright/`, gitignored).
 2. Paste a website URL and click **Save URL**.
 3. Click **Find all URLs** to crawl the site (and sitemap) and save `data/site-urls.json`.
