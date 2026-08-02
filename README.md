@@ -42,7 +42,7 @@ Site audit reports: `reports/site-audit-summary.html` / `.md`, `reports/site-aud
 | `npm run test:headed` | See the browser |
 | `npm run test:debug` | Step-through debug |
 | `npm run test:lighthouse` | Lighthouse scores for `BASE_URL` |
-| `npm run test:discover-urls` | Deep crawl (sitemap + SPA routes + links) → `data/site-urls.json` |
+| `npm run test:discover-urls` | Deep crawl with 10 parallel workers → `data/site-urls.json` |
 | `npm run test:site-audit` | Audit saved URL list one by one |
 | `npm run test:codegen` | Record flows into tests |
 | `npm run test:report` | Open the last HTML report |

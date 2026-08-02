@@ -13,7 +13,11 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MAX_PAGES = Number(process.env.SITE_DISCOVER_MAX_PAGES) || 500;
 const MAX_DEPTH = Number(process.env.SITE_DISCOVER_MAX_DEPTH) || 8;
 const MAX_SITEMAPS = Number(process.env.SITE_DISCOVER_MAX_SITEMAPS) || 40;
-const SETTLE_MS = Number(process.env.SITE_DISCOVER_SETTLE_MS) || 1500;
+const SETTLE_MS = Number(process.env.SITE_DISCOVER_SETTLE_MS) || 800;
+const CONCURRENCY = Math.max(
+  1,
+  Math.min(20, Number(process.env.SITE_DISCOVER_CONCURRENCY) || 10),
+);
 
 applyBrowsersPath();
 
@@ -355,58 +359,28 @@ function enqueue(url, depth, { urls, queue, visited, queued }) {
   return true;
 }
 
-async function main() {
-  const website = (process.env.BASE_URL || 'https://example.com').replace(/\/$/, '');
-  const start = normalizeUrl(website, website);
-  if (!start) {
-    console.error('Invalid BASE_URL');
-    process.exit(1);
+function takeNext({ queue, visited, queued, urls }) {
+  while (queue.length) {
+    const next = queue.shift();
+    if (!next) continue;
+    if (visited.has(next.url)) {
+      queued.delete(next.url);
+      continue;
+    }
+    if (visited.size >= MAX_PAGES) {
+      queue.unshift(next);
+      return null;
+    }
+    visited.add(next.url);
+    queued.delete(next.url);
+    urls.add(next.url);
+    return next;
   }
+  return null;
+}
 
-  const require = createRequire(import.meta.url);
-  const { chromium } = require('playwright-core');
-  const executablePath = chromium.executablePath();
-  if (!fs.existsSync(executablePath)) {
-    console.error(`Chromium not found at ${executablePath}`);
-    process.exit(1);
-  }
-
-  console.log(`Find all URLs → ${website}`);
-  console.log(`Max pages: ${MAX_PAGES}, max depth: ${MAX_DEPTH}`);
-  console.log(`Browsers: ${browsersDir}`);
-
-  const urls = new Set();
-  const queue = [];
-  const visited = new Set();
-  const queued = new Set();
-  const sources = {
-    seed: 0,
-    sitemap: 0,
-    assets: 0,
-    crawl: 0,
-  };
-
-  enqueue(start.href, 0, { urls, queue, visited, queued });
-  sources.seed = 1;
-
-  console.log('Checking sitemap + robots.txt…');
-  const fromSitemap = await fetchSitemapUrls(start.origin);
-  for (const url of fromSitemap) {
-    if (enqueue(url, 0, { urls, queue, visited, queued })) sources.sitemap += 1;
-  }
-  console.log(`Sitemap contributed ${fromSitemap.length} crawlable URL(s)`);
-
-  const browser = await chromium.launch({
-    executablePath,
-    headless: true,
-  });
-  const context = await browser.newContext({
-    ignoreHTTPSErrors: true,
-    userAgent:
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 QA-Website-Discover/1.0',
-  });
-  const page = await context.newPage();
-  const seenJsResponses = new Set();
+function attachDiscoveryListeners(page, start, state) {
+  const { urls, queue, visited, queued, sources, seenJsResponses } = state;
   page.on('response', async (response) => {
     try {
       const url = response.url();
@@ -425,7 +399,6 @@ async function main() {
       const text = await response.text();
       if (!text || text.length > 2_000_000) return;
 
-      // Pull same-origin absolute URLs and /job/<id> style paths from API payloads.
       for (const match of text.matchAll(/https?:\/\/[^"'\s\\]+/g)) {
         const candidate = normalizeUrl(match[0].replace(/[),.;]+$/, ''), start.origin);
         if (
@@ -449,7 +422,6 @@ async function main() {
         /["'](?:id|echo_id|uuid|slug)["']\s*:\s*["']([a-zA-Z0-9\-_]{8,})["']/g,
       )) {
         const id = match[1];
-        // Prefer concrete job detail pages when ids look like UUIDs.
         if (
           /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
             id,
@@ -468,20 +440,170 @@ async function main() {
       // ignore
     }
   });
+}
+
+async function scanOnePage(page, next, start, state) {
+  const { urls, queue, visited, queued, sources, seenJsResponses } = state;
+  const index = visited.size;
+  console.log(`[${index}/${MAX_PAGES}] Scanning ${next.url}`);
 
   try {
-    // First pass: load homepage, wait for SPA, mine JS routes + DOM.
-    console.log(`[1] Bootstrapping SPA at ${start.href}`);
-    await page.goto(start.href, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-    await settlePage(page);
-    await expandMenus(page);
+    const response = await page.goto(next.url, {
+      waitUntil: 'domcontentloaded',
+      timeout: 45_000,
+    });
+    const status = response?.status() ?? 0;
+    if (status >= 400) {
+      console.log(`  HTTP ${status}`);
+      return;
+    }
 
-    const assetRoutes = await discoverFromAssets(page, start.origin, [...seenJsResponses]);
+    await settlePage(page);
+    if (next.depth === 0 || next.depth === 1) {
+      await expandMenus(page);
+    }
+
+    if (index <= 8) {
+      const moreRoutes = await discoverFromAssets(page, start.origin, [...seenJsResponses]);
+      for (const url of moreRoutes) {
+        if (enqueue(url, next.depth, { urls, queue, visited, queued })) {
+          sources.assets += 1;
+        }
+      }
+    }
+
+    if (next.depth >= MAX_DEPTH) return;
+
+    const hrefs = await collectDomLinks(page).catch(() => []);
+    let added = 0;
+    for (const href of hrefs) {
+      const candidate = normalizeUrl(href, next.url);
+      if (!isCrawlable(candidate, start.origin)) continue;
+      if (enqueue(candidate.href, next.depth + 1, { urls, queue, visited, queued })) {
+        sources.crawl += 1;
+        added += 1;
+      }
+      if (urls.size >= MAX_PAGES) break;
+    }
+    if (added) console.log(`  +${added} new link(s)`);
+  } catch (err) {
+    console.log(`  skip: ${err?.message || err}`);
+  }
+}
+
+async function crawlParallel(browser, start, state) {
+  let inFlight = 0;
+  const contextOptions = {
+    ignoreHTTPSErrors: true,
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 QA-Website-Discover/1.0',
+  };
+
+  async function worker(workerId) {
+    const context = await browser.newContext(contextOptions);
+    const page = await context.newPage();
+    attachDiscoveryListeners(page, start, state);
+
+    try {
+      while (state.visited.size < MAX_PAGES) {
+        const next = takeNext(state);
+        if (!next) {
+          if (inFlight === 0 && state.queue.length === 0) break;
+          await new Promise((resolve) => setTimeout(resolve, 75));
+          if (inFlight === 0 && state.queue.length === 0) break;
+          continue;
+        }
+
+        inFlight += 1;
+        try {
+          await scanOnePage(page, next, start, state);
+        } finally {
+          inFlight -= 1;
+        }
+      }
+    } finally {
+      await context.close().catch(() => {});
+      console.log(`  worker ${workerId + 1} done`);
+    }
+  }
+
+  console.log(`Crawling with ${CONCURRENCY} parallel workers…`);
+  await Promise.all(
+    Array.from({ length: CONCURRENCY }, (_, i) => worker(i)),
+  );
+}
+
+async function main() {
+  const website = (process.env.BASE_URL || 'https://example.com').replace(/\/$/, '');
+  const start = normalizeUrl(website, website);
+  if (!start) {
+    console.error('Invalid BASE_URL');
+    process.exit(1);
+  }
+
+  const require = createRequire(import.meta.url);
+  const { chromium } = require('playwright-core');
+  const executablePath = chromium.executablePath();
+  if (!fs.existsSync(executablePath)) {
+    console.error(`Chromium not found at ${executablePath}`);
+    process.exit(1);
+  }
+
+  console.log(`Find all URLs → ${website}`);
+  console.log(`Max pages: ${MAX_PAGES}, max depth: ${MAX_DEPTH}, workers: ${CONCURRENCY}`);
+  console.log(`Browsers: ${browsersDir}`);
+
+  const state = {
+    urls: new Set(),
+    queue: [],
+    visited: new Set(),
+    queued: new Set(),
+    seenJsResponses: new Set(),
+    sources: {
+      seed: 0,
+      sitemap: 0,
+      assets: 0,
+      crawl: 0,
+    },
+  };
+
+  const { urls, queue, visited, queued, sources, seenJsResponses } = state;
+
+  enqueue(start.href, 0, { urls, queue, visited, queued });
+  sources.seed = 1;
+
+  console.log('Checking sitemap + robots.txt…');
+  const fromSitemap = await fetchSitemapUrls(start.origin);
+  for (const url of fromSitemap) {
+    if (enqueue(url, 0, { urls, queue, visited, queued })) sources.sitemap += 1;
+  }
+  console.log(`Sitemap contributed ${fromSitemap.length} crawlable URL(s)`);
+
+  const browser = await chromium.launch({
+    executablePath,
+    headless: true,
+  });
+
+  try {
+    const bootContext = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 QA-Website-Discover/1.0',
+    });
+    const bootPage = await bootContext.newPage();
+    attachDiscoveryListeners(bootPage, start, state);
+
+    console.log(`[boot] Bootstrapping SPA at ${start.href}`);
+    await bootPage.goto(start.href, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    await settlePage(bootPage);
+    await expandMenus(bootPage);
+
+    const assetRoutes = await discoverFromAssets(bootPage, start.origin, [...seenJsResponses]);
     for (const url of assetRoutes) {
       if (enqueue(url, 0, { urls, queue, visited, queued })) sources.assets += 1;
     }
 
-    const homeLinks = await collectDomLinks(page).catch(() => []);
+    const homeLinks = await collectDomLinks(bootPage).catch(() => []);
     for (const href of homeLinks) {
       const candidate = normalizeUrl(href, start.href);
       if (!isCrawlable(candidate, start.origin)) continue;
@@ -491,58 +613,9 @@ async function main() {
       `Bootstrap found ${assetRoutes.size} asset route(s), ${homeLinks.length} DOM href(s); queue=${queue.length}`,
     );
 
-    while (queue.length && visited.size < MAX_PAGES) {
-      const next = queue.shift();
-      if (!next || visited.has(next.url)) continue;
-      visited.add(next.url);
-      queued.delete(next.url);
-      urls.add(next.url);
+    await bootContext.close().catch(() => {});
 
-      console.log(`[${visited.size}/${MAX_PAGES}] Scanning ${next.url}`);
-      try {
-        const response = await page.goto(next.url, {
-          waitUntil: 'domcontentloaded',
-          timeout: 45_000,
-        });
-        const status = response?.status() ?? 0;
-        if (status >= 400) {
-          console.log(`  HTTP ${status}`);
-          continue;
-        }
-
-        await settlePage(page);
-        if (next.depth === 0 || next.depth === 1) {
-          await expandMenus(page);
-        }
-
-        // Keep discovering routes from newly loaded chunks on first few pages.
-        if (visited.size <= 5) {
-          const moreRoutes = await discoverFromAssets(page, start.origin, [...seenJsResponses]);
-          for (const url of moreRoutes) {
-            if (enqueue(url, next.depth, { urls, queue, visited, queued })) {
-              sources.assets += 1;
-            }
-          }
-        }
-
-        if (next.depth >= MAX_DEPTH) continue;
-
-        const hrefs = await collectDomLinks(page).catch(() => []);
-        let added = 0;
-        for (const href of hrefs) {
-          const candidate = normalizeUrl(href, next.url);
-          if (!isCrawlable(candidate, start.origin)) continue;
-          if (enqueue(candidate.href, next.depth + 1, { urls, queue, visited, queued })) {
-            sources.crawl += 1;
-            added += 1;
-          }
-          if (urls.size >= MAX_PAGES) break;
-        }
-        if (added) console.log(`  +${added} new link(s)`);
-      } catch (err) {
-        console.log(`  skip: ${err?.message || err}`);
-      }
-    }
+    await crawlParallel(browser, start, state);
   } finally {
     await browser.close();
   }
@@ -555,6 +628,7 @@ async function main() {
     source: 'discover-urls',
     maxPages: MAX_PAGES,
     maxDepth: MAX_DEPTH,
+    concurrency: CONCURRENCY,
     stats: {
       scanned: visited.size,
       fromSeed: sources.seed,
@@ -568,6 +642,7 @@ async function main() {
   const savedPath = writeSiteUrls(payload);
   console.log('\nURL list saved');
   console.log(`Count: ${list.length}`);
+  console.log(`Workers: ${CONCURRENCY}`);
   console.log(
     `Sources — sitemap: ${sources.sitemap}, assets: ${sources.assets}, crawl: ${sources.crawl}`,
   );
