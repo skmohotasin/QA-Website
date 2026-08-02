@@ -16,6 +16,7 @@ const downloadReportTopBtn = document.querySelector('#download-report-top');
 const downloadMdBtn = document.querySelector('#download-md');
 const downloadBugsBtn = document.querySelector('#download-bugs');
 const downloadLighthouseBtn = document.querySelector('#download-lighthouse');
+const downloadLighthouseFullBtn = document.querySelector('#download-lighthouse-full');
 const openReportLink = document.querySelector('#open-report');
 
 const DESCRIPTIONS = {
@@ -92,6 +93,9 @@ function setDownloadEnabled({
   if (downloadLighthouseBtn) {
     downloadLighthouseBtn.disabled = !hasLighthouse;
   }
+  if (downloadLighthouseFullBtn) {
+    downloadLighthouseFullBtn.disabled = !hasLighthouse;
+  }
 }
 
 async function refreshReport({ highlight = false, retries = 8 } = {}) {
@@ -136,7 +140,7 @@ function updateReportUi(report, { highlight = false } = {}) {
     const scores = Object.values(lh.categories || {})
       .map((c) => `${c.title} ${c.score ?? 'n/a'}`)
       .join(' · ');
-    reportSummary.textContent = `Lighthouse ready · ${lh.website} · ${scores}`;
+    reportSummary.textContent = `Lighthouse ready · ${lh.website} · ${scores} · download summary + full report for developers`;
   } else {
     reportSummary.textContent = 'Your report is ready. Use the download buttons below.';
   }
@@ -367,9 +371,16 @@ downloadBugsBtn?.addEventListener('click', () => {
 downloadLighthouseBtn?.addEventListener('click', () => {
   downloadFile('/reports/lighthouse-summary.html', 'lighthouse-summary.html');
 });
+downloadLighthouseFullBtn?.addEventListener('click', () => {
+  downloadFile('/reports/lighthouse-full.html', 'lighthouse-full.html');
+});
 downloadReportTopBtn?.addEventListener('click', () => {
   if (!downloadLighthouseBtn?.disabled && downloadReportBtn?.disabled) {
-    downloadFile('/reports/lighthouse-summary.html', 'lighthouse-summary.html');
+    // Prefer full report for developers; also pull summary.
+    downloadFile('/reports/lighthouse-full.html', 'lighthouse-full.html');
+    setTimeout(() => {
+      downloadFile('/reports/lighthouse-summary.html', 'lighthouse-summary.html');
+    }, 400);
     return;
   }
   downloadFile('/reports/client-report.html', 'website-qa-report.html');
