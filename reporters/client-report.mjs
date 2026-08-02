@@ -5,6 +5,8 @@ const REPORT_DIR = path.resolve('reports');
 const HTML_FILE = path.join(REPORT_DIR, 'client-report.html');
 const MD_FILE = path.join(REPORT_DIR, 'client-report.md');
 const JSON_FILE = path.join(REPORT_DIR, 'client-report.json');
+const BUGS_MD = path.join(REPORT_DIR, 'bug-reports.md');
+const BUGS_HTML = path.join(REPORT_DIR, 'bug-reports.html');
 
 const PLAIN = {
   'loads and returns a successful response': {
@@ -23,6 +25,54 @@ const PLAIN = {
     title: 'Website is reachable',
     meaning: 'The website server answered with a healthy response.',
   },
+  'primary navigation links open without server errors': {
+    title: 'Navigation links work',
+    meaning: 'Main menu links open pages without server errors.',
+  },
+  'forms are present and usable when the site has forms': {
+    title: 'Forms are usable',
+    meaning: 'Visible forms include fields and a way to submit.',
+  },
+  'search field accepts input when search exists': {
+    title: 'Search accepts input',
+    meaning: 'The search box can receive typed queries.',
+  },
+  'login / account entry point is available when offered': {
+    title: 'Login / account entry works',
+    meaning: 'Sign-in or account entry opens a usable auth screen.',
+  },
+  'cart or add-to-cart controls exist on commerce sites': {
+    title: 'Cart / checkout controls present',
+    meaning: 'Commerce controls such as cart or add-to-cart are available.',
+  },
+  'filter controls are interactive when present': {
+    title: 'Filters are interactive',
+    meaning: 'Filter controls are visible and enabled when the site offers them.',
+  },
+  'layout is usable on mobile': {
+    title: 'Mobile layout is usable',
+    meaning: 'On a phone-sized screen, content is visible without horizontal scrolling.',
+  },
+  'layout is usable on tablet': {
+    title: 'Tablet layout is usable',
+    meaning: 'On a tablet-sized screen, content is visible without horizontal scrolling.',
+  },
+  'layout is usable on desktop': {
+    title: 'Desktop layout is usable',
+    meaning: 'On a desktop screen, content is visible without horizontal scrolling.',
+  },
+  'clickable controls are large enough to tap on mobile': {
+    title: 'Tap targets are large enough',
+    meaning: 'Buttons and links are big enough for touch use on mobile.',
+  },
+  'images that convey meaning expose alternative text': {
+    title: 'Images have alternative text',
+    meaning: 'Images include alt text for accessibility and clarity.',
+  },
+  'text content does not overflow its viewport width': {
+    title: 'No content overflow on mobile',
+    meaning: 'Page elements do not stick out wider than the screen.',
+  },
 };
 
 function plainLanguage(testTitle) {
@@ -32,6 +82,14 @@ function plainLanguage(testTitle) {
     title: testTitle,
     meaning: 'Automated quality check for this page or feature.',
   };
+}
+
+function annotationMap(test) {
+  const map = {};
+  for (const item of test.annotations || []) {
+    map[item.type] = item.description;
+  }
+  return map;
 }
 
 function escapeHtml(value) {
@@ -56,24 +114,27 @@ function statusLabel(status) {
 }
 
 /**
- * Playwright reporter that writes a client-readable HTML + Markdown summary.
+ * Playwright reporter that writes client summary + bug tickets.
  */
 export default class ClientReportReporter {
   constructor() {
     this.baseURL = process.env.BASE_URL || 'Not set';
     this.startedAt = new Date();
     this.results = [];
+    this.bugs = [];
   }
 
   onBegin() {
     this.startedAt = new Date();
     this.results = [];
+    this.bugs = [];
   }
 
   onTestEnd(test, result) {
     const title = test.title;
     const plain = plainLanguage(title);
     const project = test.parent?.project()?.name || 'default';
+    const notes = annotationMap(test);
     const error = result.errors?.[0];
     const shortError = error
       ? String(error.message || error)
@@ -82,7 +143,7 @@ export default class ClientReportReporter {
           .filter(Boolean)[0]
       : null;
 
-    this.results.push({
+    const entry = {
       suite: test.parent?.title || 'Checks',
       title: plain.title,
       meaning: plain.meaning,
@@ -91,7 +152,27 @@ export default class ClientReportReporter {
       status: result.status,
       durationMs: result.duration,
       shortError,
-    });
+      severity: notes.severity || 'Medium',
+      steps: notes.steps || `1. Open ${this.baseURL}\n2. Run check: ${plain.title}`,
+      expected: notes.expected || plain.meaning,
+    };
+
+    this.results.push(entry);
+
+    if (['failed', 'timedOut', 'interrupted'].includes(result.status)) {
+      this.bugs.push({
+        id: `BUG-${String(this.bugs.length + 1).padStart(3, '0')}`,
+        title: plain.title,
+        severity: entry.severity,
+        website: this.baseURL,
+        browser: project,
+        steps: entry.steps,
+        expected: entry.expected,
+        actual: shortError || 'Check failed during automated run.',
+        suite: entry.suite,
+        date: new Date().toISOString(),
+      });
+    }
   }
 
   onEnd(result) {
@@ -113,14 +194,111 @@ export default class ClientReportReporter {
       startedAt: this.startedAt.toISOString(),
       endedAt: endedAt.toISOString(),
       overall,
-      totals: { total, passed, failed, skipped },
+      totals: { total, passed, failed, skipped, bugs: this.bugs.length },
       results: this.results,
+      bugs: this.bugs,
     };
 
     fs.writeFileSync(JSON_FILE, JSON.stringify(summary, null, 2), 'utf8');
     fs.writeFileSync(MD_FILE, renderMarkdown(summary), 'utf8');
     fs.writeFileSync(HTML_FILE, renderHtml(summary, overallTone), 'utf8');
+    fs.writeFileSync(BUGS_MD, renderBugsMarkdown(summary), 'utf8');
+    fs.writeFileSync(BUGS_HTML, renderBugsHtml(summary), 'utf8');
   }
+}
+
+function renderBugsMarkdown(summary) {
+  if (!summary.bugs.length) {
+    return [
+      '# Bug Reports',
+      '',
+      `**Website:** ${summary.website}`,
+      `**Date:** ${new Date(summary.endedAt).toLocaleString()}`,
+      '',
+      'No bugs were found in this run.',
+      '',
+    ].join('\n');
+  }
+
+  const lines = [
+    '# Bug Reports',
+    '',
+    `**Website:** ${summary.website}`,
+    `**Date:** ${new Date(summary.endedAt).toLocaleString()}`,
+    `**Bugs found:** ${summary.bugs.length}`,
+    '',
+  ];
+
+  for (const bug of summary.bugs) {
+    lines.push(`## ${bug.id}: ${bug.title}`);
+    lines.push('');
+    lines.push(`- **Severity:** ${bug.severity}`);
+    lines.push(`- **Browser / device:** ${bug.browser}`);
+    lines.push(`- **Suite:** ${bug.suite}`);
+    lines.push('');
+    lines.push('### Steps to reproduce');
+    lines.push('');
+    lines.push(bug.steps);
+    lines.push('');
+    lines.push('### Expected result');
+    lines.push('');
+    lines.push(bug.expected);
+    lines.push('');
+    lines.push('### Actual result');
+    lines.push('');
+    lines.push(bug.actual);
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+function renderBugsHtml(summary) {
+  const body = summary.bugs.length
+    ? summary.bugs
+        .map(
+          (bug) => `
+      <article class="bug">
+        <h2>${escapeHtml(bug.id)}: ${escapeHtml(bug.title)}</h2>
+        <p><strong>Severity:</strong> ${escapeHtml(bug.severity)} ·
+           <strong>Browser:</strong> ${escapeHtml(bug.browser)}</p>
+        <h3>Steps to reproduce</h3>
+        <pre>${escapeHtml(bug.steps)}</pre>
+        <h3>Expected result</h3>
+        <p>${escapeHtml(bug.expected)}</p>
+        <h3>Actual result</h3>
+        <p class="actual">${escapeHtml(bug.actual)}</p>
+      </article>`,
+        )
+        .join('')
+    : '<p>No bugs were found in this run.</p>';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bug Reports</title>
+  <style>
+    body { font-family: "Segoe UI", Tahoma, sans-serif; margin: 0; background: #eef2f4; color: #12202b; }
+    main { max-width: 860px; margin: 2rem auto; background: #fffdf8; padding: 2rem; border-radius: 16px; border: 1px solid #d7dde3; }
+    h1 { margin-top: 0; }
+    .bug { border-top: 1px solid #d7dde3; padding-top: 1rem; margin-top: 1rem; }
+    pre { white-space: pre-wrap; background: #f5f7f8; padding: 0.8rem; border-radius: 8px; }
+    .actual { color: #b42318; }
+    @media print { body { background: #fff; } main { box-shadow: none; border: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Bug Reports</h1>
+    <p>${escapeHtml(summary.website)} · ${escapeHtml(new Date(summary.endedAt).toLocaleString())} · ${summary.bugs.length} bug(s)</p>
+    ${body}
+  </main>
+</body>
+</html>`;
 }
 
 function renderMarkdown(summary) {
@@ -133,9 +311,9 @@ function renderMarkdown(summary) {
     '',
     '## Summary',
     '',
-    `| Total checks | Passed | Failed | Skipped |`,
-    `| --- | --- | --- | --- |`,
-    `| ${summary.totals.total} | ${summary.totals.passed} | ${summary.totals.failed} | ${summary.totals.skipped} |`,
+    `| Total checks | Passed | Failed | Skipped | Bugs |`,
+    `| --- | --- | --- | --- | --- |`,
+    `| ${summary.totals.total} | ${summary.totals.passed} | ${summary.totals.failed} | ${summary.totals.skipped} | ${summary.totals.bugs} |`,
     '',
     '## What we checked',
     '',
@@ -152,6 +330,13 @@ function renderMarkdown(summary) {
     if (item.shortError) {
       lines.push(`- **Issue found:** ${item.shortError}`);
     }
+    lines.push('');
+  }
+
+  if (summary.bugs.length) {
+    lines.push('## Bug tickets');
+    lines.push('');
+    lines.push('See `bug-reports.md` / `bug-reports.html` for full tickets (steps, expected, actual, severity).');
     lines.push('');
   }
 
@@ -183,6 +368,10 @@ function renderHtml(summary, overallTone) {
         </tr>`;
     })
     .join('');
+
+  const bugsNote = summary.bugs.length
+    ? `<p class="footer"><strong>${summary.bugs.length} bug ticket(s)</strong> were generated. Open <code>bug-reports.html</code> for steps / expected / actual / severity.</p>`
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -235,7 +424,7 @@ function renderHtml(summary, overallTone) {
     .hero.pass { background: var(--pass-bg); }
     .hero.fail { background: var(--fail-bg); }
     .hero strong { font-size: 1.25rem; }
-    .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
+    .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
     .meta div {
       border: 1px solid var(--line);
       border-radius: 10px;
@@ -284,6 +473,7 @@ function renderHtml(summary, overallTone) {
       <div><span>Total checks</span><b>${summary.totals.total}</b></div>
       <div><span>Passed</span><b>${summary.totals.passed}</b></div>
       <div><span>Failed</span><b>${summary.totals.failed}</b></div>
+      <div><span>Bugs</span><b>${summary.totals.bugs}</b></div>
     </div>
 
     <table>
@@ -300,7 +490,8 @@ function renderHtml(summary, overallTone) {
       </tbody>
     </table>
 
-    <p class="footer">Generated by QA Website automation. You can print this page or save it as PDF (Ctrl+P).</p>
+    ${bugsNote}
+    <p class="footer">Generated by QA Website automation. Print or save as PDF with Ctrl+P.</p>
   </main>
 </body>
 </html>`;

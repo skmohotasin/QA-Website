@@ -14,13 +14,17 @@ const reportSummary = document.querySelector('#report-summary');
 const downloadReportBtn = document.querySelector('#download-report');
 const downloadReportTopBtn = document.querySelector('#download-report-top');
 const downloadMdBtn = document.querySelector('#download-md');
+const downloadBugsBtn = document.querySelector('#download-bugs');
 const openReportLink = document.querySelector('#open-report');
 
 const DESCRIPTIONS = {
   smoke: 'Page load & basic content',
-  a11y: 'Accessibility · axe WCAG checks',
+  functional: 'Forms, auth, nav, search, cart, filters',
+  uiux: 'Responsive layout + accessibility',
+  a11y: 'axe WCAG critical / serious',
   api: 'HTTP health of the base URL',
-  all: 'Smoke + a11y + API',
+  regression: 'Full retest of all key suites',
+  all: 'Everything on Chromium',
   headed: 'Watch the browser run',
   browsers: 'All engines + mobile',
 };
@@ -63,12 +67,17 @@ function downloadFile(url, filename) {
   link.remove();
 }
 
-function setDownloadEnabled(enabled) {
+function setDownloadEnabled(enabled, bugCount = 0) {
   for (const btn of [downloadReportBtn, downloadReportTopBtn, downloadMdBtn]) {
     if (!btn) continue;
     btn.disabled = !enabled;
   }
   downloadReportTopBtn?.classList.toggle('is-ready', enabled);
+  if (downloadBugsBtn) {
+    downloadBugsBtn.disabled = !(enabled && bugCount > 0);
+    downloadBugsBtn.textContent =
+      bugCount > 0 ? `Download bug tickets (${bugCount})` : 'Download bug tickets';
+  }
 }
 
 async function refreshReport({ highlight = false, retries = 8 } = {}) {
@@ -91,7 +100,8 @@ async function refreshReport({ highlight = false, retries = 8 } = {}) {
 
 function updateReportUi(report, { highlight = false } = {}) {
   const ready = Boolean(report?.available);
-  setDownloadEnabled(ready);
+  const bugCount = report?.bugCount ?? report?.summary?.totals?.bugs ?? 0;
+  setDownloadEnabled(ready, bugCount);
 
   if (!ready) {
     reportPanel.hidden = true;
@@ -101,7 +111,8 @@ function updateReportUi(report, { highlight = false } = {}) {
   reportPanel.hidden = false;
   const s = report.summary;
   if (s) {
-    reportSummary.textContent = `${s.overall} · ${s.website} · ${s.totals.passed}/${s.totals.total} checks passed · ${new Date(s.endedAt).toLocaleString()}`;
+    const bugText = bugCount ? ` · ${bugCount} bug ticket(s)` : '';
+    reportSummary.textContent = `${s.overall} · ${s.website} · ${s.totals.passed}/${s.totals.total} checks passed${bugText} · ${new Date(s.endedAt).toLocaleString()}`;
   } else {
     reportSummary.textContent =
       'Your plain-language report is ready. Click Download report to save it.';
@@ -322,6 +333,9 @@ downloadReportTopBtn.addEventListener('click', () => {
 });
 downloadMdBtn.addEventListener('click', () => {
   downloadFile('/reports/client-report.md', 'website-qa-report.md');
+});
+downloadBugsBtn?.addEventListener('click', () => {
+  downloadFile('/reports/bug-reports.html', 'website-qa-bug-tickets.html');
 });
 
 await loadConfig();

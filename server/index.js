@@ -29,6 +29,14 @@ const SUITES = {
     label: 'Smoke',
     args: ['test', 'tests/smoke', '--project=chromium'],
   },
+  functional: {
+    label: 'Functional',
+    args: ['test', 'tests/functional', '--project=chromium'],
+  },
+  uiux: {
+    label: 'UI / UX',
+    args: ['test', 'tests/ui', 'tests/a11y', '--project=chromium'],
+  },
   a11y: {
     label: 'A11y',
     args: ['test', 'tests/a11y', '--project=chromium'],
@@ -36,6 +44,18 @@ const SUITES = {
   api: {
     label: 'API / Network',
     args: ['test', 'tests/api', '--project=chromium'],
+  },
+  regression: {
+    label: 'Regression',
+    args: [
+      'test',
+      'tests/smoke',
+      'tests/functional',
+      'tests/ui',
+      'tests/a11y',
+      'tests/api',
+      '--project=chromium',
+    ],
   },
   all: {
     label: 'All suites',
@@ -116,6 +136,8 @@ function getClientReport() {
   const html = path.join(reportsDir, 'client-report.html');
   const md = path.join(reportsDir, 'client-report.md');
   const json = path.join(reportsDir, 'client-report.json');
+  const bugsHtml = path.join(reportsDir, 'bug-reports.html');
+  const bugsMd = path.join(reportsDir, 'bug-reports.md');
   if (!fs.existsSync(html)) {
     return { available: false };
   }
@@ -132,6 +154,9 @@ function getClientReport() {
     htmlUrl: '/reports/client-report.html',
     mdUrl: '/reports/client-report.md',
     jsonUrl: '/reports/client-report.json',
+    bugsHtmlUrl: fs.existsSync(bugsHtml) ? '/reports/bug-reports.html' : null,
+    bugsMdUrl: fs.existsSync(bugsMd) ? '/reports/bug-reports.md' : null,
+    bugCount: summary?.totals?.bugs ?? summary?.bugs?.length ?? 0,
     summary,
     updatedAt: fs.statSync(html).mtime.toISOString(),
   };
@@ -347,7 +372,9 @@ const server = http.createServer(async (req, res) => {
     req.method === 'GET' &&
     (pathname === '/reports/client-report.html' ||
       pathname === '/reports/client-report.md' ||
-      pathname === '/reports/client-report.json')
+      pathname === '/reports/client-report.json' ||
+      pathname === '/reports/bug-reports.html' ||
+      pathname === '/reports/bug-reports.md')
   ) {
     const name = path.basename(pathname);
     const download = url.searchParams.get('download') === '1';

@@ -45,11 +45,15 @@ Client reports are written to `reports/client-report.html` and `reports/client-r
 ```
 tests/
   smoke/          # Critical path / homepage checks
+  functional/     # Forms, auth, nav, search, cart, filters
+  ui/             # Responsive + layout UX checks
   a11y/           # axe-core accessibility scans
   api/            # HTTP / API smoke checks
+  helpers/        # Shared probes + bug metadata
   fixtures.ts     # Shared Playwright fixtures
+reporters/client-report.mjs   # Client report + bug tickets
 playwright.config.ts
-.github/workflows/playwright.yml   # CI on push/PR
+.github/workflows/playwright.yml
 ```
 
 ## Pointing at your site
