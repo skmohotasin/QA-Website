@@ -260,14 +260,34 @@ body {
   flex-wrap: wrap;
 }
 
+.url-list-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.72);
+}
+
 .url-list-status {
-  margin: 0.55rem 0 0;
+  margin: 0;
   font-size: 0.9rem;
   color: var(--muted);
 }
 
-.url-list-status a {
-  color: var(--accent);
+.url-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.btn-small {
+  padding: 0.45rem 0.75rem;
+  font-size: 0.88rem;
 }
 
 .url-form input {

@@ -1,8 +1,11 @@
 const urlInput = document.querySelector('#base-url');
 const urlForm = document.querySelector('#url-form');
 const urlStatus = document.querySelector('#url-status');
+const urlListBar = document.querySelector('#url-list-bar');
 const urlListStatus = document.querySelector('#url-list-status');
 const findUrlsBtn = document.querySelector('#find-urls');
+const downloadUrlListBtn = document.querySelector('#download-url-list');
+const openUrlListBtn = document.querySelector('#open-url-list');
 const suiteGrid = document.querySelector('#suite-grid');
 const logEl = document.querySelector('#log');
 const stopBtn = document.querySelector('#stop-run');
@@ -70,18 +73,21 @@ function setRunning(isRunning, activeId = null) {
 
 function updateSiteUrlsUi(next) {
   siteUrls = next || null;
-  if (!urlListStatus) return;
+  if (!urlListBar || !urlListStatus) return;
 
   if (siteUrls?.available) {
-    urlListStatus.hidden = false;
+    urlListBar.hidden = false;
     const when = siteUrls.discoveredAt
       ? ` · ${new Date(siteUrls.discoveredAt).toLocaleString()}`
       : '';
-    urlListStatus.innerHTML = `URL list ready: <strong>${siteUrls.count}</strong> page(s)${when} · <a href="/data/site-urls.json" target="_blank" rel="noopener">Open JSON</a>`;
+    urlListStatus.innerHTML = `URL list ready: <strong>${siteUrls.count}</strong> page(s)${when}`;
+    if (openUrlListBtn) openUrlListBtn.href = `/data/site-urls.json?t=${Date.now()}`;
+    if (downloadUrlListBtn) downloadUrlListBtn.disabled = false;
   } else {
-    urlListStatus.hidden = false;
+    urlListBar.hidden = false;
     urlListStatus.textContent =
       'No URL list yet. Click Find all URLs after saving the site.';
+    if (downloadUrlListBtn) downloadUrlListBtn.disabled = true;
   }
 
   setRunning(running);
@@ -533,6 +539,10 @@ function connectEvents() {
 
 urlForm.addEventListener('submit', saveUrl);
 findUrlsBtn?.addEventListener('click', findAllUrls);
+downloadUrlListBtn?.addEventListener('click', () => {
+  if (!siteUrls?.available) return;
+  downloadFile('/data/site-urls.json', 'site-urls.json');
+});
 stopBtn.addEventListener('click', stopRun);
 installBtn.addEventListener('click', installTools);
 clearBtn.addEventListener('click', () => {

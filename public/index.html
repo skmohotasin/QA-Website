@@ -63,7 +63,17 @@
           </div>
         </form>
         <p class="status-line" id="url-status" role="status"></p>
-        <p class="url-list-status" id="url-list-status" hidden></p>
+        <div class="url-list-bar" id="url-list-bar" hidden>
+          <p class="url-list-status" id="url-list-status"></p>
+          <div class="url-list-actions">
+            <a class="btn btn-ghost btn-small" id="open-url-list" href="/data/site-urls.json" target="_blank" rel="noopener">
+              Open JSON
+            </a>
+            <button type="button" class="btn btn-ghost btn-small" id="download-url-list">
+              Download URL list
+            </button>
+          </div>
+        </div>
       </section>
 
       <section class="suites" aria-labelledby="suites-heading">
