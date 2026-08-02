@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { applyBrowsersPath, browsersDir } from '../lib/browsers.js';
+import { applyBrowsersPath } from '../lib/browsers.js';
 import { readSiteUrls, slugFromUrl } from '../lib/site-urls.js';
 import { writeClientReports } from '../reporters/client-report.mjs';
 import { getSuiteMeta } from '../lib/suite-meta.js';
@@ -192,9 +192,9 @@ async function main() {
       PAGE_URL: url,
       REPORT_SUITE_KEY: suiteKey,
       CLIENT_REPORT_DIR: outDir,
-      PLAYWRIGHT_BROWSERS_PATH: browsersDir,
       NODE_NO_WARNINGS: '1',
     };
+    applyBrowsersPath(env);
     delete env.NO_COLOR;
     delete env.FORCE_COLOR;
     delete env.npm_config_devdir;

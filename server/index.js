@@ -301,8 +301,9 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner, scope }
 
   const env = {
     ...process.env,
-    PLAYWRIGHT_BROWSERS_PATH: browsersDir,
   };
+  // Use Playwright's shared default cache (same as `npx playwright install`).
+  applyBrowsersPath(env);
   // Cursor/sandbox may inject this; npm warns on unknown config "devdir".
   delete env.npm_config_devdir;
   delete env.NPM_CONFIG_DEVDIR;
@@ -314,8 +315,6 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner, scope }
   if (baseURL) env.BASE_URL = baseURL;
   env.SITE_RUN_SCOPE = scope === 'all' ? 'all' : 'current';
   if (suiteKey) env.REPORT_SUITE_KEY = suiteKey;
-
-  fs.mkdirSync(browsersDir, { recursive: true });
 
   let command;
   let commandArgs;
@@ -445,7 +444,7 @@ function runSuite(suiteKey, { scope = 'current' } = {}) {
       return {
         ok: false,
         error:
-          'Chromium is not installed in this repo yet. Use Install browsers first.',
+          'Chromium is not installed yet. Run npx playwright install or use Install browsers.',
         tools,
       };
     }
@@ -453,7 +452,7 @@ function runSuite(suiteKey, { scope = 'current' } = {}) {
     return {
       ok: false,
       error:
-        'Playwright browsers are not installed in this repo yet. Use Install browsers first.',
+        'Playwright browsers are not installed yet. Run npx playwright install or use Install browsers.',
       tools,
     };
   }
@@ -726,7 +725,7 @@ server.listen(PORT, () => {
   console.log(`PID ${process.pid} (stops with this terminal / VS Code close)`);
   console.log(
     tools.installed
-      ? `Browsers: ready (${browsersDir})`
-      : `Browsers: missing — open the console and click Install browsers`,
+      ? `Browsers: ready (${browsersDir()})`
+      : `Browsers: missing — run npx playwright install or use Install browsers in the console`,
   );
 });

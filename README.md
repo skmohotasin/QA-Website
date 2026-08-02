@@ -24,7 +24,13 @@ cp .env.example .env
 
 Set `BASE_URL` in `.env` to the site under test.
 
-Browsers can also be installed from the console (**Install browsers** → downloads into `.playwright/`, gitignored).
+Browsers are installed **once** into Playwright’s shared cache (same place for CLI and the console). Use either:
+
+```bash
+npx playwright install
+```
+
+or **Install browsers** in the console — not both.
 
 ## Web console
 

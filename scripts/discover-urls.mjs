@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { applyBrowsersPath, browsersDir } from '../lib/browsers.js';
+import { applyBrowsersPath, getBrowsersDir } from '../lib/browsers.js';
 import {
   isCrawlable,
   normalizeUrl,
@@ -551,7 +551,7 @@ async function main() {
 
   console.log(`Find all URLs → ${website}`);
   console.log(`Max pages: ${MAX_PAGES}, max depth: ${MAX_DEPTH}, workers: ${CONCURRENCY}`);
-  console.log(`Browsers: ${browsersDir}`);
+  console.log(`Browsers: ${getBrowsersDir()}`);
 
   const state = {
     urls: new Set(),

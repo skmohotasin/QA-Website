@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import AxeBuilder from '@axe-core/playwright';
-import { applyBrowsersPath, browsersDir } from '../lib/browsers.js';
+import { applyBrowsersPath, getBrowsersDir } from '../lib/browsers.js';
 import { readSiteUrls, slugFromUrl } from '../lib/site-urls.js';
 import { getSuiteMeta } from '../lib/suite-meta.js';
 
@@ -509,7 +509,7 @@ async function main() {
   if (scope === 'all') {
     console.log(`Source: data/site-urls.json (${list.discoveredAt || 'unknown date'})`);
   }
-  console.log(`Browsers: ${browsersDir}`);
+  console.log(`Browsers: ${getBrowsersDir()}`);
 
   clearDir(pagesDir);
   clearProjectCache();

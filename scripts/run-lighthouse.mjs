@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import lighthouse from 'lighthouse';
 import * as chromeLauncher from 'chrome-launcher';
-import { applyBrowsersPath, browsersDir } from '../lib/browsers.js';
+import { applyBrowsersPath, getBrowsersDir } from '../lib/browsers.js';
 import { getSuiteMeta } from '../lib/suite-meta.js';
 import { readSiteUrls, slugFromUrl } from '../lib/site-urls.js';
 
@@ -413,7 +413,7 @@ async function main() {
   const executablePath = chromePath();
   if (!fs.existsSync(executablePath)) {
     console.error(`Chromium not found at ${executablePath}`);
-    console.error('Install browsers from the console first.');
+    console.error('Install browsers first: npx playwright install');
     process.exit(1);
   }
 
@@ -421,7 +421,7 @@ async function main() {
   console.log(`Lighthouse · scope=${scope} · ${urls.length} URL(s)`);
   console.log(`Website: ${website}`);
   console.log(`Using Chromium: ${executablePath}`);
-  console.log(`Browsers dir: ${browsersDir}`);
+  console.log(`Browsers dir: ${getBrowsersDir()}`);
 
   fs.mkdirSync(reportsDir, { recursive: true });
   if (fs.existsSync(pagesDir)) fs.rmSync(pagesDir, { recursive: true, force: true });

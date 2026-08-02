@@ -366,7 +366,7 @@ function updateToolsUi(tools) {
     toolsPanel.hidden = false;
     toolsPanel.classList.add('is-ready');
     toolsHeading.textContent = 'Browsers ready';
-    toolsMessage.textContent = `Installed in this repo: ${tools.browsersDir}`;
+    toolsMessage.textContent = `Shared Playwright cache: ${tools.browsersDir}`;
     installBtn.textContent = 'Reinstall browsers';
   } else {
     toolsPanel.hidden = false;
@@ -374,7 +374,7 @@ function updateToolsUi(tools) {
     toolsHeading.textContent = 'Browsers not installed';
     toolsMessage.textContent =
       tools.message ||
-      'Playwright browsers must be installed into this repo before tests can run.';
+      'Install once with Install browsers or npx playwright install (same download).';
     installBtn.textContent = 'Install browsers';
   }
 
@@ -412,7 +412,7 @@ async function loadConfig() {
   renderSuites(data.suites || []);
   setRunning(Boolean(data.running));
   if (!data.tools?.installed) {
-    setStatus('Install browsers into this repo before running tests', 'err');
+    setStatus('Install browsers first (once)', 'err');
   } else {
     setStatus(data.baseURL ? `Ready · ${data.baseURL}` : 'Add a website URL to begin');
   }
@@ -485,7 +485,7 @@ async function runSuite(suite) {
 async function installTools() {
   if (running) return;
   setRunning(true, 'install');
-  appendLog(`\n▸ Installing Playwright browsers into .playwright/ …\n`, 'meta');
+  appendLog(`\n▸ Installing Playwright browsers (shared cache)…\n`, 'meta');
 
   const res = await fetch('/api/install-tools', { method: 'POST' });
   const data = await res.json();
@@ -512,7 +512,7 @@ function connectEvents() {
     const data = JSON.parse(event.data);
     setRunning(true, data.suite);
     if (data.kind === 'install') {
-      setStatus('Installing browsers into this repo…');
+      setStatus('Installing Playwright browsers…');
     } else if (data.kind === 'discover-urls') {
       setStatus(`Finding all URLs on ${data.baseURL}`);
     } else {
