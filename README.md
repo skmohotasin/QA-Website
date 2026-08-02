@@ -32,7 +32,7 @@ npm run stop
 3. Choose **Current URL** (saved site only) or **All URLs** (saved list from Find all URLs).
 4. Click **Audit entire site** or a suite like **Smoke**. Live output streams on the page.
 5. Download Summary / Full reports when the run finishes.
-6. Use **Lighthouse** for Performance / SEO / Best Practices / Accessibility scores (always current URL).
+6. Use **Lighthouse** for Performance / SEO / Best Practices / Accessibility (supports Current URL or All URLs).
 
 Client reports are written to `reports/client-report.html` and `reports/client-report.md`.  
 Lighthouse reports: `reports/lighthouse-summary.html` (simple) and `reports/lighthouse-full.html` (full detail).  

@@ -79,7 +79,6 @@ function setRunning(isRunning, activeId = null) {
 
 function suiteDescription(id) {
   const base = DESCRIPTIONS[id] || 'Playwright suite';
-  if (id === 'lighthouse') return base;
   return runScope === 'all' ? `All URLs · ${base}` : `Current URL · ${base}`;
 }
 
@@ -337,7 +336,8 @@ function updateReportUi(report, { highlight = false } = {}) {
     const scores = Object.values(lh.categories || {})
       .map((c) => `${c.title} ${c.score ?? 'n/a'}`)
       .join(' · ');
-    reportSummary.textContent = `${lh.suite || 'Lighthouse'} · ${lh.website} · ${scores}`;
+    const pagesText = lh.pageCount ? ` · ${lh.pageCount} page(s)` : '';
+    reportSummary.textContent = `${lh.suite || 'Lighthouse'} · ${lh.website}${pagesText} · ${scores}`;
   } else if (kind === 'site-audit' && report.siteAudit) {
     const a = report.siteAudit;
     reportSummary.textContent = `${a.suite || 'Audit entire site'} · ${a.overall} · ${a.website} · ${a.totals.pages} pages · ${a.totals.passed} passed · ${a.totals.issues} issue(s) · ${a.date}`;
@@ -456,7 +456,7 @@ async function runSuite(suite) {
     setStatus('Install browsers first', 'err');
     return;
   }
-  if (runScope === 'all' && !siteUrls?.available && suite !== 'lighthouse') {
+  if (runScope === 'all' && !siteUrls?.available) {
     setStatus('Find all URLs first, or choose Current URL', 'err');
     return;
   }

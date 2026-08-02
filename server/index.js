@@ -413,11 +413,9 @@ function runSuite(suiteKey, { scope = 'current' } = {}) {
   let runner = suite.runner;
   let args = suite.args;
 
-  // Lighthouse always uses the current saved URL.
+  // Discover-urls ignores scope. Lighthouse supports Current URL and All URLs.
   const effectiveScope =
-    suite.runner === 'lighthouse' || suite.runner === 'discover-urls'
-      ? 'current'
-      : runScope;
+    suite.runner === 'discover-urls' ? 'current' : runScope;
 
   // When All URLs is selected, normal Playwright suites run via the multi-URL runner.
   if (
@@ -460,7 +458,10 @@ function runSuite(suiteKey, { scope = 'current' } = {}) {
     };
   }
 
-  if (effectiveScope === 'all' && (runner === 'site-audit' || runner === 'multi-url')) {
+  if (
+    effectiveScope === 'all' &&
+    (runner === 'site-audit' || runner === 'multi-url' || runner === 'lighthouse')
+  ) {
     if (!urls.available) {
       return {
         ok: false,
@@ -567,18 +568,23 @@ const server = http.createServer(async (req, res) => {
       pathname === '/reports/lighthouse-full.html' ||
       pathname === '/reports/lighthouse-full.md' ||
       pathname === '/reports/lighthouse.json' ||
+      pathname.startsWith('/reports/lighthouse-pages/') ||
       pathname === '/reports/site-audit-summary.html' ||
       pathname === '/reports/site-audit-summary.md' ||
       pathname === '/reports/site-audit-full.html' ||
       pathname === '/reports/site-audit-full.md' ||
       pathname === '/reports/site-audit.json')
   ) {
-    const name = path.basename(pathname);
+    const rel = pathname.replace(/^\/reports\//, '');
+    if (rel.includes('..')) {
+      res.writeHead(403).end('Forbidden');
+      return;
+    }
     const download = url.searchParams.get('download') === '1';
     return serveFile(
       res,
-      path.join(reportsDir, name),
-      download ? name : undefined,
+      path.join(reportsDir, rel),
+      download ? path.basename(rel) : undefined,
     );
   }
 
