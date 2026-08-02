@@ -249,6 +249,16 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(405).end('Method not allowed');
 });
 
+server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error(
+      `Port ${PORT} is already in use. Stop the other process, or run with PORT=4174 npm start`,
+    );
+    process.exit(1);
+  }
+  throw err;
+});
+
 server.listen(PORT, () => {
   console.log(`QA Website console → http://localhost:${PORT}`);
 });
