@@ -203,15 +203,25 @@ body {
 }
 
 .report-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 0.65rem;
 }
 
 .report-actions .btn {
+  box-sizing: border-box;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.75rem;
+  height: 2.75rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 @media (max-width: 860px) {
