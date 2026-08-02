@@ -136,10 +136,10 @@ function reportTargets(kind) {
     summaryName: 'website-qa-summary.html',
     summaryMd: '/reports/client-report.md',
     summaryMdName: 'website-qa-summary.md',
-    fullHtml: '/reports/bug-reports.html',
-    fullName: 'website-qa-full-bugs.html',
-    fullMd: '/reports/bug-reports.md',
-    fullMdName: 'website-qa-full-bugs.md',
+    fullHtml: '/reports/client-report-full.html',
+    fullName: 'website-qa-full.html',
+    fullMd: '/reports/client-report-full.md',
+    fullMdName: 'website-qa-full.md',
     bugsHtml: '/reports/bug-reports.html',
     bugsMd: '/reports/bug-reports.md',
   };
@@ -173,9 +173,9 @@ function wireReportActions(report) {
   const hasSummaryMd = Boolean(targets.summaryMd);
   const hasFullMd =
     Boolean(targets.fullMd) &&
-    (kind === 'lighthouse' || kind === 'site-audit' || hasBugs);
+    (kind === 'lighthouse' || kind === 'site-audit' || kind === 'client' || hasBugs);
   const hasFullHtml =
-    kind === 'lighthouse' || kind === 'site-audit'
+    kind === 'lighthouse' || kind === 'site-audit' || kind === 'client'
       ? true
       : hasBugs || Boolean(targets.summaryHtml);
 
@@ -219,7 +219,7 @@ function wireReportActions(report) {
   }
   if (actionEl('full-open') && ready && hasFullHtml) {
     const fullUrl =
-      kind === 'lighthouse' || kind === 'site-audit' || hasBugs
+      kind === 'lighthouse' || kind === 'site-audit' || kind === 'client' || hasBugs
         ? targets.fullHtml
         : targets.summaryHtml;
     actionEl('full-open').href = `${fullUrl}?t=${stamp}`;
@@ -228,7 +228,7 @@ function wireReportActions(report) {
 
 function downloadLatestReport() {
   const targets = reportTargets(latestKind);
-  if (latestKind === 'lighthouse' || latestKind === 'site-audit') {
+  if (latestKind === 'lighthouse' || latestKind === 'site-audit' || latestKind === 'client') {
     downloadFile(targets.summaryHtml, targets.summaryName);
     setTimeout(() => downloadFile(targets.fullHtml, targets.fullName), 400);
     return;
@@ -574,7 +574,7 @@ reportPanel?.addEventListener('click', (event) => {
       latestKind === 'site-audit' ? 'site-audit-full.html' : 'website-qa-bug-tickets.html',
     );
   } else if (action === 'full-download') {
-    if (latestKind === 'lighthouse' || latestKind === 'site-audit') {
+    if (latestKind === 'lighthouse' || latestKind === 'site-audit' || latestKind === 'client') {
       downloadFile(targets.fullHtml, targets.fullName);
     } else if (bugCount > 0) {
       downloadFile(targets.fullHtml, targets.fullName);
@@ -582,7 +582,12 @@ reportPanel?.addEventListener('click', (event) => {
       downloadFile(targets.summaryHtml, targets.summaryName);
     }
   } else if (action === 'full-md' && targets.fullMd) {
-    if (latestKind === 'lighthouse' || latestKind === 'site-audit' || bugCount > 0) {
+    if (
+      latestKind === 'lighthouse' ||
+      latestKind === 'site-audit' ||
+      latestKind === 'client' ||
+      bugCount > 0
+    ) {
       downloadFile(targets.fullMd, targets.fullMdName || 'website-qa-full.md');
     }
   } else if (action === 'full-bugs' && targets.bugsHtml && bugCount > 0) {

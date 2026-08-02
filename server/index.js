@@ -525,6 +525,8 @@ const server = http.createServer(async (req, res) => {
     (pathname === '/reports/client-report.html' ||
       pathname === '/reports/client-report.md' ||
       pathname === '/reports/client-report.json' ||
+      pathname === '/reports/client-report-full.html' ||
+      pathname === '/reports/client-report-full.md' ||
       pathname === '/reports/bug-reports.html' ||
       pathname === '/reports/bug-reports.md' ||
       pathname === '/reports/lighthouse-summary.html' ||
