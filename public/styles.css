@@ -148,17 +148,22 @@ body {
 
 .report-panel {
   background: var(--panel);
-  border: 1px solid var(--line);
+  border: 1px solid rgba(22, 121, 76, 0.28);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   backdrop-filter: blur(10px);
   padding: 1.35rem 1.4rem 1.45rem;
   animation: rise 0.8s ease both;
   animation-delay: 0.18s;
+  background: rgba(236, 250, 242, 0.92);
 }
 
 .report-panel[hidden] {
   display: none !important;
+}
+
+.report-panel.is-new {
+  animation: pulse-ready 0.9s ease;
 }
 
 .report-summary {
@@ -176,6 +181,21 @@ body {
   text-decoration: none;
   display: inline-flex;
   align-items: center;
+}
+
+@keyframes pulse-ready {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(22, 121, 76, 0.35);
+  }
+  50% {
+    transform: scale(1.01);
+    box-shadow: 0 0 0 8px rgba(22, 121, 76, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: var(--shadow);
+  }
 }
 
 .url-copy h1,
@@ -240,6 +260,13 @@ body {
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .section-head h2 {

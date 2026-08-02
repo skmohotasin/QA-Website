@@ -11,6 +11,10 @@ const toolsHeading = document.querySelector('#tools-heading');
 const installBtn = document.querySelector('#install-tools');
 const reportPanel = document.querySelector('#report-panel');
 const reportSummary = document.querySelector('#report-summary');
+const downloadReportBtn = document.querySelector('#download-report');
+const downloadReportTopBtn = document.querySelector('#download-report-top');
+const downloadMdBtn = document.querySelector('#download-md');
+const openReportLink = document.querySelector('#open-report');
 
 const DESCRIPTIONS = {
   smoke: 'Page load & basic content',
@@ -49,8 +53,27 @@ function setRunning(isRunning, activeId = null) {
   urlInput.disabled = isRunning;
 }
 
-function updateReportUi(report) {
-  if (!report?.available) {
+function downloadFile(url, filename) {
+  const stamp = Date.now();
+  const link = document.createElement('a');
+  link.href = `${url}${url.includes('?') ? '&' : '?'}download=1&t=${stamp}`;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function setDownloadEnabled(enabled) {
+  downloadReportBtn.disabled = !enabled;
+  downloadReportTopBtn.disabled = !enabled;
+  downloadMdBtn.disabled = !enabled;
+}
+
+function updateReportUi(report, { highlight = false } = {}) {
+  const ready = Boolean(report?.available);
+  setDownloadEnabled(ready);
+
+  if (!ready) {
     reportPanel.hidden = true;
     return;
   }
@@ -61,7 +84,17 @@ function updateReportUi(report) {
     reportSummary.textContent = `${s.overall} · ${s.website} · ${s.totals.passed}/${s.totals.total} checks passed · ${new Date(s.endedAt).toLocaleString()}`;
   } else {
     reportSummary.textContent =
-      'Client-friendly report is ready. Open it, or download HTML/Markdown to send.';
+      'Your plain-language report is ready. Click Download report to save it.';
+  }
+
+  openReportLink.href = `/reports/client-report.html?t=${Date.now()}`;
+
+  if (highlight) {
+    reportPanel.classList.remove('is-new');
+    // Force reflow so animation can replay.
+    void reportPanel.offsetWidth;
+    reportPanel.classList.add('is-new');
+    reportPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 }
 
@@ -198,23 +231,25 @@ function connectEvents() {
   source.addEventListener('run-end', (event) => {
     const data = JSON.parse(event.data);
     if (data.tools) updateToolsUi(data.tools);
-    if (data.report) updateReportUi(data.report);
+    if (data.kind === 'test') {
+      updateReportUi(data.report, { highlight: Boolean(data.report?.available) });
+    }
     setRunning(false);
     if (data.ok) {
       appendLog(`\n✓ ${data.label} finished successfully\n`, 'ok');
       if (data.kind === 'install') {
         setStatus('Browsers installed — tests are ready', 'ok');
       } else {
-        setStatus(`${data.label} passed — client report ready`, 'ok');
+        setStatus(`${data.label} passed — download report below`, 'ok');
         if (data.report?.available) {
-          appendLog('▸ Client report ready: Open report / Download HTML or Markdown\n', 'meta');
+          appendLog('▸ Report ready — click Download report\n', 'meta');
         }
       }
     } else {
       appendLog(`\n✗ ${data.label} finished with code ${data.code}\n`, 'err');
       setStatus(`${data.label} failed`, 'err');
       if (data.report?.available) {
-        appendLog('▸ Client report ready with failure details\n', 'meta');
+        appendLog('▸ Report ready with failure details — click Download report\n', 'meta');
       }
     }
   });
@@ -243,6 +278,15 @@ stopBtn.addEventListener('click', stopRun);
 installBtn.addEventListener('click', installTools);
 clearBtn.addEventListener('click', () => {
   logEl.textContent = '';
+});
+downloadReportBtn.addEventListener('click', () => {
+  downloadFile('/reports/client-report.html', 'website-qa-report.html');
+});
+downloadReportTopBtn.addEventListener('click', () => {
+  downloadFile('/reports/client-report.html', 'website-qa-report.html');
+});
+downloadMdBtn.addEventListener('click', () => {
+  downloadFile('/reports/client-report.md', 'website-qa-report.md');
 });
 
 await loadConfig();
