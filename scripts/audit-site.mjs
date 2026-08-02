@@ -4,11 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import AxeBuilder from '@axe-core/playwright';
 import { applyBrowsersPath, browsersDir } from '../lib/browsers.js';
+import { readSiteUrls, slugFromUrl } from '../lib/site-urls.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const reportsDir = path.join(root, 'reports');
-const MAX_PAGES = Number(process.env.SITE_AUDIT_MAX_PAGES) || 30;
-const MAX_DEPTH = Number(process.env.SITE_AUDIT_MAX_DEPTH) || 3;
+const pagesDir = path.join(reportsDir, 'pages');
+const cacheDir = path.join(reportsDir, '.cache');
 
 applyBrowsersPath();
 
@@ -27,34 +28,48 @@ function loadEnvFile(filePath) {
 
 loadEnvFile(path.join(root, '.env'));
 
-function normalizeUrl(href, base) {
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+function clearDir(dir) {
+  if (!fs.existsSync(dir)) return;
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+function clearProjectCache() {
+  clearDir(cacheDir);
+  clearDir(path.join(root, 'test-results'));
+  clearDir(path.join(root, 'playwright-report'));
+  clearDir(path.join(root, 'blob-report'));
+  fs.mkdirSync(cacheDir, { recursive: true });
+}
+
+async function freshPage(browser) {
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    serviceWorkers: 'block',
+  });
+  const page = await context.newPage();
+  return { context, page };
+}
+
+async function closeSession(session) {
+  if (!session) return;
   try {
-    const url = new URL(href, base);
-    url.hash = '';
-    if (url.pathname.length > 1 && url.pathname.endsWith('/')) {
-      url.pathname = url.pathname.slice(0, -1);
-    }
-    return url;
+    await session.context.clearCookies();
   } catch {
-    return null;
+    // ignore
   }
-}
-
-function isCrawlable(url, origin) {
-  if (!url || url.origin !== origin) return false;
-  if (!['http:', 'https:'].includes(url.protocol)) return false;
-  const pathName = url.pathname.toLowerCase();
-  if (/\.(pdf|jpg|jpeg|png|gif|svg|webp|zip|rar|exe|dmg|mp4|mp3|css|js|woff2?|ico)$/i.test(pathName)) {
-    return false;
+  try {
+    await session.context.close();
+  } catch {
+    // ignore
   }
-  if (pathName.includes('/wp-admin') || pathName.includes('/cdn-cgi/')) return false;
-  return true;
-}
-
-async function collectLinks(page, baseUrl) {
-  return page.$$eval('a[href]', (anchors) =>
-    anchors.map((a) => a.getAttribute('href') || '').filter(Boolean),
-  );
 }
 
 async function auditPage(page, url) {
@@ -80,24 +95,26 @@ async function auditPage(page, url) {
     result.loadMs = Date.now() - started;
     result.ok = result.status >= 200 && result.status < 400;
 
-    const axe = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa'])
-      .analyze();
-    result.a11yIssues = axe.violations
-      .filter((v) => v.impact === 'critical' || v.impact === 'serious')
-      .map((v) => ({
-        id: v.id,
-        impact: v.impact,
-        help: v.help,
-        nodes: v.nodes?.length || 0,
-      }));
+    if (result.ok) {
+      const axe = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa'])
+        .analyze();
+      result.a11yIssues = axe.violations
+        .filter((v) => v.impact === 'critical' || v.impact === 'serious')
+        .map((v) => ({
+          id: v.id,
+          impact: v.impact,
+          help: v.help,
+          nodes: v.nodes?.length || 0,
+        }));
 
-    await page.setViewportSize({ width: 375, height: 812 });
-    result.overflowMobile = await page.evaluate(() => {
-      const doc = document.documentElement;
-      return doc.scrollWidth > doc.clientWidth + 1;
-    });
-    await page.setViewportSize({ width: 1280, height: 800 });
+      await page.setViewportSize({ width: 375, height: 812 });
+      result.overflowMobile = await page.evaluate(() => {
+        const doc = document.documentElement;
+        return doc.scrollWidth > doc.clientWidth + 1;
+      });
+      await page.setViewportSize({ width: 1280, height: 800 });
+    }
   } catch (err) {
     result.error = String(err?.message || err);
     result.loadMs = Date.now() - started;
@@ -106,59 +123,122 @@ async function auditPage(page, url) {
   return result;
 }
 
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
+function pageIssues(page) {
+  const issues = [];
+  if (page.error) {
+    issues.push({
+      severity: 'Critical',
+      page: page.url,
+      title: 'Page failed to load',
+      detail: page.error,
+    });
+  } else if (!page.ok) {
+    issues.push({
+      severity: 'High',
+      page: page.url,
+      title: `HTTP ${page.status}`,
+      detail: `Page responded with status ${page.status}.`,
+    });
+  }
+  for (const issue of page.a11yIssues) {
+    issues.push({
+      severity: issue.impact === 'critical' ? 'Critical' : 'High',
+      page: page.url,
+      title: issue.help,
+      detail: `${issue.id} (${issue.nodes} element(s))`,
+    });
+  }
+  if (page.overflowMobile) {
+    issues.push({
+      severity: 'Medium',
+      page: page.url,
+      title: 'Horizontal overflow on mobile',
+      detail: 'Content is wider than a phone-sized screen.',
+    });
+  }
+  return issues;
 }
 
-function buildSummary(pages, website) {
-  const passed = pages.filter((p) => p.ok && !p.a11yIssues.length && !p.overflowMobile && !p.error);
+function renderPageHtml(pageResult, issues) {
+  const status =
+    pageResult.error || !pageResult.ok
+      ? 'Failed'
+      : issues.length
+        ? 'Issues'
+        : 'Passed';
+  const issueBlocks = issues.length
+    ? issues
+        .map(
+          (issue, index) => `
+      <article class="issue">
+        <h2>ISSUE-${String(index + 1).padStart(3, '0')}: ${escapeHtml(issue.title)}</h2>
+        <p><strong>Severity:</strong> ${escapeHtml(issue.severity)}</p>
+        <p class="actual">${escapeHtml(issue.detail)}</p>
+      </article>`,
+        )
+        .join('')
+    : '<p>No issues found on this page.</p>';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Page audit · ${escapeHtml(pageResult.url)}</title>
+  <style>
+    body { margin: 0; font-family: "Segoe UI", Tahoma, sans-serif; background: #eef2f4; color: #12202b; }
+    main { max-width: 860px; margin: 2rem auto; background: #fffdf8; border: 1px solid #d7dde3; border-radius: 16px; padding: 2rem; }
+    .actual { color: #b42318; }
+    .issue { border-top: 1px solid #d7dde3; padding-top: 1rem; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Page audit</h1>
+    <p><strong>URL:</strong> <a href="${escapeHtml(pageResult.url)}">${escapeHtml(pageResult.url)}</a></p>
+    <p><strong>Title:</strong> ${escapeHtml(pageResult.title || '-')}</p>
+    <p><strong>Result:</strong> ${status} · HTTP ${pageResult.status || 'n/a'} · ${pageResult.loadMs} ms</p>
+    ${issueBlocks}
+  </main>
+</body>
+</html>`;
+}
+
+function savePageReport(pageResult, index) {
+  const slug = slugFromUrl(pageResult.url, index);
+  const dir = path.join(pagesDir, slug);
+  fs.mkdirSync(dir, { recursive: true });
+  const issues = pageIssues(pageResult);
+  const payload = {
+    ...pageResult,
+    slug,
+    index: index + 1,
+    issues,
+    auditedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(path.join(dir, 'page-audit.json'), JSON.stringify(payload, null, 2));
+  fs.writeFileSync(path.join(dir, 'page-audit.html'), renderPageHtml(pageResult, issues));
+  return payload;
+}
+
+function buildSummary(pages, website, sourceList) {
+  const passed = pages.filter(
+    (p) => p.ok && !p.a11yIssues.length && !p.overflowMobile && !p.error,
+  );
   const failed = pages.filter((p) => !p.ok || p.error);
   const a11yPages = pages.filter((p) => p.a11yIssues.length);
   const overflowPages = pages.filter((p) => p.overflowMobile);
-  const issues = [];
-
-  for (const page of pages) {
-    if (page.error) {
-      issues.push({
-        severity: 'Critical',
-        page: page.url,
-        title: 'Page failed to load',
-        detail: page.error,
-      });
-    } else if (!page.ok) {
-      issues.push({
-        severity: 'High',
-        page: page.url,
-        title: `HTTP ${page.status}`,
-        detail: `Page responded with status ${page.status}.`,
-      });
-    }
-    for (const issue of page.a11yIssues) {
-      issues.push({
-        severity: issue.impact === 'critical' ? 'Critical' : 'High',
-        page: page.url,
-        title: issue.help,
-        detail: `${issue.id} (${issue.nodes} element(s))`,
-      });
-    }
-    if (page.overflowMobile) {
-      issues.push({
-        severity: 'Medium',
-        page: page.url,
-        title: 'Horizontal overflow on mobile',
-        detail: 'Content is wider than a phone-sized screen.',
-      });
-    }
-  }
+  const issues = pages.flatMap((p) => pageIssues(p));
 
   return {
     website,
     date: new Date().toLocaleString(),
     fetchedAt: new Date().toISOString(),
+    sourceList: {
+      count: sourceList?.count ?? pages.length,
+      discoveredAt: sourceList?.discoveredAt ?? null,
+      path: 'data/site-urls.json',
+    },
     totals: {
       pages: pages.length,
       passed: passed.length,
@@ -240,7 +320,7 @@ function renderSummaryHtml(summary) {
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <p class="muted">See site-audit-full.html / .md for issue details developers can fix.</p>
+    <p class="muted">Per-URL reports are in reports/pages/. See site-audit-full.html for issue details.</p>
   </main>
 </body>
 </html>`;
@@ -264,7 +344,7 @@ function renderFullHtml(summary) {
       </article>`,
         )
         .join('')
-    : '<p>No issues found across crawled pages.</p>';
+    : '<p>No issues found across audited pages.</p>';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -297,6 +377,7 @@ function renderSummaryMarkdown(summary) {
     `**Website:** ${summary.website}`,
     `**Date:** ${summary.date}`,
     `**Overall:** ${summary.overall}`,
+    `**URL list:** data/site-urls.json (${summary.sourceList.count} URLs)`,
     '',
     `| Pages | Passed | Failed | A11y pages | Issues |`,
     `| --- | --- | --- | --- | --- |`,
@@ -313,10 +394,12 @@ function renderSummaryMarkdown(summary) {
         : page.a11yIssues.length || page.overflowMobile
           ? 'Issues'
           : 'Passed';
-    lines.push(`- **${status}** · ${page.url} · HTTP ${page.status || 'n/a'} · a11y ${page.a11yIssues.length}`);
+    lines.push(
+      `- **${status}** · ${page.url} · HTTP ${page.status || 'n/a'} · a11y ${page.a11yIssues.length}`,
+    );
   }
 
-  lines.push('', 'See `site-audit-full.md` for developer issue details.', '');
+  lines.push('', 'See `site-audit-full.md` and `reports/pages/` for details.', '');
   return lines.join('\n');
 }
 
@@ -331,7 +414,7 @@ function renderFullMarkdown(summary) {
   ];
 
   if (!summary.issues.length) {
-    lines.push('No issues found across crawled pages.', '');
+    lines.push('No issues found across audited pages.', '');
     return lines.join('\n');
   }
 
@@ -361,13 +444,26 @@ function renderFullMarkdown(summary) {
   return lines.join('\n');
 }
 
+function writeAggregate(summary) {
+  fs.mkdirSync(reportsDir, { recursive: true });
+  fs.writeFileSync(path.join(reportsDir, 'site-audit.json'), JSON.stringify(summary, null, 2));
+  fs.writeFileSync(path.join(reportsDir, 'site-audit-summary.html'), renderSummaryHtml(summary));
+  fs.writeFileSync(path.join(reportsDir, 'site-audit-full.html'), renderFullHtml(summary));
+  fs.writeFileSync(path.join(reportsDir, 'site-audit-summary.md'), renderSummaryMarkdown(summary));
+  fs.writeFileSync(path.join(reportsDir, 'site-audit-full.md'), renderFullMarkdown(summary));
+}
+
 async function main() {
-  const website = (process.env.BASE_URL || 'https://example.com').replace(/\/$/, '');
-  const start = normalizeUrl(website, website);
-  if (!start) {
-    console.error('Invalid BASE_URL');
+  const list = readSiteUrls();
+  if (!list?.urls?.length) {
+    console.error(
+      'No URL list found. Click "Find all URLs" first (saves data/site-urls.json).',
+    );
     process.exit(1);
   }
+
+  const website = list.website || process.env.BASE_URL || 'https://example.com';
+  const urls = list.urls;
 
   const require = createRequire(import.meta.url);
   const { chromium } = require('playwright-core');
@@ -377,53 +473,65 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Full site audit → ${website}`);
-  console.log(`Max pages: ${MAX_PAGES}, max depth: ${MAX_DEPTH}`);
+  console.log(`Full site audit from saved URL list → ${website}`);
+  console.log(`URLs in list: ${urls.length}`);
+  console.log(`Source: data/site-urls.json (${list.discoveredAt || 'unknown date'})`);
   console.log(`Browsers: ${browsersDir}`);
+
+  clearDir(pagesDir);
+  clearProjectCache();
+  fs.mkdirSync(pagesDir, { recursive: true });
 
   const browser = await chromium.launch({
     executablePath,
     headless: true,
   });
-  const context = await browser.newContext();
-  const page = await context.newPage();
 
-  const queue = [{ url: start.href, depth: 0 }];
-  const seen = new Set();
   const pages = [];
 
   try {
-    while (queue.length && pages.length < MAX_PAGES) {
-      const next = queue.shift();
-      if (!next || seen.has(next.url)) continue;
-      seen.add(next.url);
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      console.log(`\n[${i + 1}/${urls.length}] Auditing ${url}`);
 
-      console.log(`[${pages.length + 1}/${MAX_PAGES}] Auditing ${next.url}`);
-      const result = await auditPage(page, next.url);
-      pages.push(result);
-
-      if (next.depth >= MAX_DEPTH || !result.ok) continue;
-
-      const hrefs = await collectLinks(page, next.url).catch(() => []);
-      for (const href of hrefs) {
-        const candidate = normalizeUrl(href, next.url);
-        if (!isCrawlable(candidate, start.origin)) continue;
-        const key = candidate.href;
-        if (seen.has(key) || queue.some((q) => q.url === key)) continue;
-        queue.push({ url: key, depth: next.depth + 1 });
+      let session = null;
+      try {
+        session = await freshPage(browser);
+        const result = await auditPage(session.page, url);
+        pages.push(result);
+        const saved = savePageReport(result, i);
+        console.log(
+          `  → ${result.ok ? 'HTTP ' + result.status : 'FAILED'} · ${saved.issues.length} issue(s) · saved reports/pages/${saved.slug}/`,
+        );
+      } catch (err) {
+        const failed = {
+          url,
+          status: 0,
+          title: '',
+          ok: false,
+          loadMs: 0,
+          a11yIssues: [],
+          overflowMobile: false,
+          error: String(err?.message || err),
+        };
+        pages.push(failed);
+        const saved = savePageReport(failed, i);
+        console.log(`  → ERROR · saved reports/pages/${saved.slug}/`);
+      } finally {
+        await closeSession(session);
+        clearProjectCache();
+        console.log('  → cache cleared, moving to next URL');
       }
+
+      // Keep aggregate fresh so a long run still has a usable report if stopped.
+      writeAggregate(buildSummary(pages, website, list));
     }
   } finally {
     await browser.close();
   }
 
-  const summary = buildSummary(pages, website);
-  fs.mkdirSync(reportsDir, { recursive: true });
-  fs.writeFileSync(path.join(reportsDir, 'site-audit.json'), JSON.stringify(summary, null, 2));
-  fs.writeFileSync(path.join(reportsDir, 'site-audit-summary.html'), renderSummaryHtml(summary));
-  fs.writeFileSync(path.join(reportsDir, 'site-audit-full.html'), renderFullHtml(summary));
-  fs.writeFileSync(path.join(reportsDir, 'site-audit-summary.md'), renderSummaryMarkdown(summary));
-  fs.writeFileSync(path.join(reportsDir, 'site-audit-full.md'), renderFullMarkdown(summary));
+  const summary = buildSummary(pages, website, list);
+  writeAggregate(summary);
 
   console.log('\nAudit complete');
   console.log(`Pages: ${summary.totals.pages}`);
@@ -434,6 +542,7 @@ async function main() {
   console.log('- reports/site-audit-summary.html / .md');
   console.log('- reports/site-audit-full.html / .md');
   console.log('- reports/site-audit.json');
+  console.log('- reports/pages/<url>/page-audit.html + .json');
 }
 
 main().catch((err) => {

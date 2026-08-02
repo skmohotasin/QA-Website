@@ -251,6 +251,23 @@ body {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.75rem;
+  align-items: stretch;
+}
+
+.url-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.url-list-status {
+  margin: 0.55rem 0 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.url-list-status a {
+  color: var(--accent);
 }
 
 .url-form input {
@@ -463,6 +480,11 @@ body {
 @media (max-width: 640px) {
   .url-form {
     grid-template-columns: 1fr;
+  }
+
+  .url-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   .tools-panel {

@@ -9,6 +9,7 @@ import {
   browsersDir,
   getToolsStatus,
 } from '../lib/browsers.js';
+import { getSiteUrlsStatus, siteUrlsPath } from '../lib/site-urls.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -61,6 +62,11 @@ const SUITES = {
     label: 'Lighthouse',
     runner: 'lighthouse',
     args: [path.join(root, 'scripts', 'run-lighthouse.mjs')],
+  },
+  'discover-urls': {
+    label: 'Find all URLs',
+    runner: 'discover-urls',
+    args: [path.join(root, 'scripts', 'discover-urls.mjs')],
   },
   'site-audit': {
     label: 'Audit entire site',
@@ -306,7 +312,7 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner }) {
 
   let command;
   let commandArgs;
-  if (runner === 'lighthouse' || runner === 'site-audit') {
+  if (runner === 'lighthouse' || runner === 'site-audit' || runner === 'discover-urls') {
     command = process.execPath;
     commandArgs = args;
   } else {
@@ -341,7 +347,10 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner }) {
     // Small delay so reporters can finish writing files.
     setTimeout(() => {
       const report =
-        kind === 'test' || kind === 'lighthouse' || kind === 'site-audit'
+        kind === 'test' ||
+        kind === 'lighthouse' ||
+        kind === 'site-audit' ||
+        kind === 'discover-urls'
           ? getClientReport()
           : { available: false };
       broadcast('run-end', {
@@ -352,6 +361,7 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner }) {
         ok: code === 0,
         tools,
         report,
+        siteUrls: getSiteUrlsStatus(),
       });
       if (kind === 'install') {
         broadcast('tools', tools);
@@ -384,7 +394,11 @@ function runSuite(suiteKey) {
 
   const tools = getToolsStatus();
   const chromium = tools.browsers.find((b) => b.id === 'chromium');
-  if (suite.runner === 'lighthouse' || suite.runner === 'site-audit') {
+  if (
+    suite.runner === 'lighthouse' ||
+    suite.runner === 'site-audit' ||
+    suite.runner === 'discover-urls'
+  ) {
     if (!chromium?.installed) {
       return {
         ok: false,
@@ -402,6 +416,19 @@ function runSuite(suiteKey) {
     };
   }
 
+  if (suite.runner === 'site-audit') {
+    const urls = getSiteUrlsStatus();
+    if (!urls.available) {
+      return {
+        ok: false,
+        error:
+          'No URL list yet. Click "Find all URLs" first to crawl and save data/site-urls.json.',
+        tools,
+        siteUrls: urls,
+      };
+    }
+  }
+
   return spawnPlaywright(suite.args, {
     baseURL: readBaseUrl(),
     label: suite.label,
@@ -411,7 +438,9 @@ function runSuite(suiteKey) {
         ? 'lighthouse'
         : suite.runner === 'site-audit'
           ? 'site-audit'
-          : 'test',
+          : suite.runner === 'discover-urls'
+            ? 'discover-urls'
+            : 'test',
     runner: suite.runner,
   });
 }
@@ -443,18 +472,33 @@ const server = http.createServer(async (req, res) => {
     const tools = getToolsStatus();
     return sendJson(res, 200, {
       baseURL: readBaseUrl(),
-      suites: Object.entries(SUITES).map(([id, s]) => ({
-        id,
-        label: s.label,
-      })),
+      suites: Object.entries(SUITES)
+        .filter(([id]) => id !== 'discover-urls')
+        .map(([id, s]) => ({
+          id,
+          label: s.label,
+        })),
       running: Boolean(activeRun),
       tools,
       report: getClientReport(),
+      siteUrls: getSiteUrlsStatus(),
     });
   }
 
-  if (req.method === 'GET' && pathname === '/api/report') {
-    return sendJson(res, 200, getClientReport());
+  if (req.method === 'GET' && pathname === '/api/site-urls') {
+    return sendJson(res, 200, getSiteUrlsStatus());
+  }
+
+  if (req.method === 'GET' && pathname === '/data/site-urls.json') {
+    if (!fs.existsSync(siteUrlsPath)) {
+      return sendJson(res, 404, { error: 'URL list not found. Run Find all URLs first.' });
+    }
+    const download = url.searchParams.get('download') === '1';
+    return serveFile(
+      res,
+      siteUrlsPath,
+      download ? 'site-urls.json' : undefined,
+    );
   }
 
   if (req.method === 'GET' && pathname === '/api/tools') {

@@ -21,15 +21,15 @@ npm start
 Open **http://localhost:4173**
 
 1. If browsers are missing, click **Install browsers** (downloads into `.playwright/`, gitignored).
-2. Paste a website URL and save it.
-3. Run a suite (Smoke, A11y, API, etc.). Live output streams on the page.
-4. Use **Audit entire site** to crawl same-origin pages and check HTTP status, serious a11y issues, and mobile overflow.
-5. Open the **Client report** (HTML) or download **Markdown** to send to your client.
+2. Paste a website URL and click **Save URL**.
+3. Click **Find all URLs** to crawl the site (and sitemap) and save `data/site-urls.json`.
+4. Click **Audit entire site** to audit that saved list one URL at a time (per-URL report + cache clear between pages).
+5. Run other suites (Smoke, A11y, API, etc.) as needed. Live output streams on the page.
 6. Use **Lighthouse** separately for Performance / SEO / Best Practices / Accessibility scores.
 
 Client reports are written to `reports/client-report.html` and `reports/client-report.md`.  
 Lighthouse reports: `reports/lighthouse-summary.html` (simple) and `reports/lighthouse-full.html` (full detail).  
-Site audit reports: `reports/site-audit-summary.html` / `.md` and `reports/site-audit-full.html` / `.md`.
+Site audit reports: `reports/site-audit-summary.html` / `.md`, `reports/site-audit-full.html` / `.md`, and per-URL files under `reports/pages/`.
 
 ## Run tests (CLI)
 
@@ -42,7 +42,8 @@ Site audit reports: `reports/site-audit-summary.html` / `.md` and `reports/site-
 | `npm run test:headed` | See the browser |
 | `npm run test:debug` | Step-through debug |
 | `npm run test:lighthouse` | Lighthouse scores for `BASE_URL` |
-| `npm run test:site-audit` | Crawl & audit pages across the site |
+| `npm run test:discover-urls` | Crawl site → `data/site-urls.json` |
+| `npm run test:site-audit` | Audit saved URL list one by one |
 | `npm run test:codegen` | Record flows into tests |
 | `npm run test:report` | Open the last HTML report |
 
@@ -58,7 +59,8 @@ tests/
   helpers/        # Shared probes + bug metadata
   fixtures.ts     # Shared Playwright fixtures
 reporters/client-report.mjs   # Client report + bug tickets
-scripts/audit-site.mjs        # Full-site crawl & audit
+scripts/discover-urls.mjs     # Find all site URLs → JSON
+scripts/audit-site.mjs        # Audit saved URL list one by one
 scripts/run-lighthouse.mjs    # Lighthouse runner
 playwright.config.ts
 .github/workflows/playwright.yml

@@ -5,6 +5,7 @@ node_modules/
 /reports/
 /blob-report/
 /playwright/.cache/
+/data/site-urls.json
 .env
 *.log
 .DS_Store

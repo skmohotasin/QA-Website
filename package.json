@@ -14,6 +14,7 @@
     "test:chromium": "playwright test --project=chromium",
     "test:report": "playwright show-report",
     "test:lighthouse": "node scripts/run-lighthouse.mjs",
+    "test:discover-urls": "node scripts/discover-urls.mjs",
     "test:site-audit": "node scripts/audit-site.mjs",
     "test:codegen": "playwright codegen"
   },

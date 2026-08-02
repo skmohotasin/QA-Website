@@ -1,6 +1,8 @@
 const urlInput = document.querySelector('#base-url');
 const urlForm = document.querySelector('#url-form');
 const urlStatus = document.querySelector('#url-status');
+const urlListStatus = document.querySelector('#url-list-status');
+const findUrlsBtn = document.querySelector('#find-urls');
 const suiteGrid = document.querySelector('#suite-grid');
 const logEl = document.querySelector('#log');
 const stopBtn = document.querySelector('#stop-run');
@@ -22,7 +24,7 @@ const DESCRIPTIONS = {
   api: 'HTTP health of the base URL',
   regression: 'Full retest of all key suites',
   lighthouse: 'Performance, SEO, a11y, best practices',
-  'site-audit': 'Crawl & audit pages across the whole site',
+  'site-audit': 'Audit saved URL list one by one',
   all: 'Everything on Chromium',
   headed: 'Watch the browser run',
   browsers: 'All engines + mobile',
@@ -32,6 +34,7 @@ let running = false;
 let toolsReady = false;
 let latestKind = 'client';
 let latestReport = null;
+let siteUrls = null;
 
 function actionEl(name) {
   return document.querySelector(`[data-report-action="${name}"]`);
@@ -54,12 +57,34 @@ function setRunning(isRunning, activeId = null) {
   running = isRunning;
   stopBtn.disabled = !isRunning;
   installBtn.disabled = isRunning;
+  if (findUrlsBtn) findUrlsBtn.disabled = isRunning || !toolsReady;
   for (const btn of suiteGrid.querySelectorAll('.btn-suite')) {
-    btn.disabled = isRunning || !toolsReady;
+    const needsUrlList = btn.dataset.suite === 'site-audit';
+    btn.disabled =
+      isRunning || !toolsReady || (needsUrlList && !siteUrls?.available);
     btn.classList.toggle('is-running', isRunning && btn.dataset.suite === activeId);
   }
   document.querySelector('#save-url').disabled = isRunning;
   urlInput.disabled = isRunning;
+}
+
+function updateSiteUrlsUi(next) {
+  siteUrls = next || null;
+  if (!urlListStatus) return;
+
+  if (siteUrls?.available) {
+    urlListStatus.hidden = false;
+    const when = siteUrls.discoveredAt
+      ? ` · ${new Date(siteUrls.discoveredAt).toLocaleString()}`
+      : '';
+    urlListStatus.innerHTML = `URL list ready: <strong>${siteUrls.count}</strong> page(s)${when} · <a href="/data/site-urls.json" target="_blank" rel="noopener">Open JSON</a>`;
+  } else {
+    urlListStatus.hidden = false;
+    urlListStatus.textContent =
+      'No URL list yet. Click Find all URLs after saving the site.';
+  }
+
+  setRunning(running);
 }
 
 function downloadFile(url, filename) {
@@ -309,6 +334,7 @@ async function loadConfig() {
   const data = await res.json();
   urlInput.value = data.baseURL || '';
   updateToolsUi(data.tools);
+  updateSiteUrlsUi(data.siteUrls);
   await refreshReport();
   renderSuites(data.suites || []);
   setRunning(Boolean(data.running));
@@ -330,11 +356,25 @@ async function saveUrl(event) {
   const data = await res.json();
   if (!res.ok) {
     setStatus(data.error || 'Could not save URL', 'err');
-    return;
+    return null;
   }
   urlInput.value = data.baseURL;
   setStatus(`Saved · ${data.baseURL}`, 'ok');
   appendLog(`\n▸ URL saved: ${data.baseURL}\n`, 'meta');
+  return data.baseURL;
+}
+
+async function findAllUrls() {
+  if (running) return;
+  if (!toolsReady) {
+    setStatus('Install browsers first', 'err');
+    return;
+  }
+
+  const saved = await saveUrl({ preventDefault() {} });
+  if (!saved) return;
+
+  await runSuite('discover-urls');
 }
 
 async function runSuite(suite) {
@@ -392,6 +432,8 @@ function connectEvents() {
     setRunning(true, data.suite);
     if (data.kind === 'install') {
       setStatus('Installing browsers into this repo…');
+    } else if (data.kind === 'discover-urls') {
+      setStatus(`Finding all URLs on ${data.baseURL}`);
     } else {
       setStatus(`Running ${data.label} on ${data.baseURL}`);
     }
@@ -400,7 +442,32 @@ function connectEvents() {
   source.addEventListener('run-end', async (event) => {
     const data = JSON.parse(event.data);
     if (data.tools) updateToolsUi(data.tools);
+    if (data.siteUrls) updateSiteUrlsUi(data.siteUrls);
     setRunning(false);
+
+    if (data.kind === 'discover-urls') {
+      let urls = data.siteUrls || null;
+      try {
+        const res = await fetch(`/api/site-urls?t=${Date.now()}`);
+        urls = await res.json();
+      } catch {
+        // keep previous
+      }
+      updateSiteUrlsUi(urls);
+      if (data.ok) {
+        appendLog(`\n✓ ${data.label} finished — URL list saved to data/site-urls.json\n`, 'ok');
+        setStatus(
+          urls?.available
+            ? `Found ${urls.count} URL(s) — ready for Audit entire site`
+            : 'URL list saved — ready for Audit entire site',
+          'ok',
+        );
+      } else {
+        appendLog(`\n✗ ${data.label} finished with code ${data.code}\n`, 'err');
+        setStatus(`${data.label} failed`, 'err');
+      }
+      return;
+    }
 
     if (data.kind === 'test' || data.kind === 'lighthouse' || data.kind === 'site-audit') {
       const report = await refreshReport({ highlight: true });
@@ -419,7 +486,7 @@ function connectEvents() {
         if (data.kind === 'lighthouse') {
           appendLog('▸ Lighthouse summary + full report saved\n', 'meta');
         } else if (data.kind === 'site-audit') {
-          appendLog('▸ Site audit summary + full issue report saved\n', 'meta');
+          appendLog('▸ Per-URL reports + site audit summary saved\n', 'meta');
         } else if (report?.available) {
           appendLog('▸ Report ready — click Download report\n', 'meta');
         }
@@ -465,6 +532,7 @@ function connectEvents() {
 }
 
 urlForm.addEventListener('submit', saveUrl);
+findUrlsBtn?.addEventListener('click', findAllUrls);
 stopBtn.addEventListener('click', stopRun);
 installBtn.addEventListener('click', installTools);
 clearBtn.addEventListener('click', () => {

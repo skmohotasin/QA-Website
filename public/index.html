@@ -36,7 +36,11 @@
       <section class="url-panel" aria-labelledby="url-heading">
         <div class="url-copy">
           <h1 id="url-heading">Site under test</h1>
-          <p>Paste the website URL, save it, then run a suite — or <strong>Audit entire site</strong> to crawl every linked page.</p>
+          <p>
+            Save the website URL, then <strong>Find all URLs</strong> to crawl and store the
+            page list. After that, run <strong>Audit entire site</strong> to check each URL
+            one by one.
+          </p>
         </div>
         <form id="url-form" class="url-form">
           <label class="sr-only" for="base-url">Website URL</label>
@@ -49,11 +53,17 @@
             required
             autocomplete="url"
           />
-          <button type="submit" class="btn btn-primary" id="save-url">
-            Save URL
-          </button>
+          <div class="url-actions">
+            <button type="submit" class="btn btn-primary" id="save-url">
+              Save URL
+            </button>
+            <button type="button" class="btn btn-ghost" id="find-urls">
+              Find all URLs
+            </button>
+          </div>
         </form>
         <p class="status-line" id="url-status" role="status"></p>
+        <p class="url-list-status" id="url-list-status" hidden></p>
       </section>
 
       <section class="suites" aria-labelledby="suites-heading">
