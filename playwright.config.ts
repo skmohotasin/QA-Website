@@ -1,7 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 import dotenv from 'dotenv';
+import { applyBrowsersPath } from './lib/browsers.js';
 
 dotenv.config({ path: '.env' });
+applyBrowsersPath();
 
 const baseURL = process.env.BASE_URL || 'https://example.com';
 

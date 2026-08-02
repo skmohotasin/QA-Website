@@ -4,12 +4,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { URL } from 'node:url';
+import {
+  applyBrowsersPath,
+  browsersDir,
+  getToolsStatus,
+} from '../lib/browsers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const publicDir = path.join(root, 'public');
 const envPath = path.join(root, '.env');
 const PORT = Number(process.env.PORT) || 4173;
+
+applyBrowsersPath();
 
 /** @type {import('node:child_process').ChildProcessWithoutNullStreams | null} */
 let activeRun = null;
@@ -118,42 +125,55 @@ function serveStatic(req, res, pathname) {
   fs.createReadStream(filePath).pipe(res);
 }
 
-function runSuite(suiteKey) {
-  const suite = SUITES[suiteKey];
-  if (!suite) {
-    return { ok: false, error: 'Unknown suite' };
-  }
+function spawnPlaywright(args, { baseURL, label, suiteKey, kind }) {
   if (activeRun) {
-    return { ok: false, error: 'A test run is already in progress' };
+    return { ok: false, error: 'Another task is already in progress' };
   }
 
-  const baseURL = readBaseUrl();
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-  const child = spawn(npx, ['playwright', ...suite.args], {
+  const env = {
+    ...process.env,
+    FORCE_COLOR: '0',
+    PLAYWRIGHT_BROWSERS_PATH: browsersDir,
+  };
+  if (baseURL) env.BASE_URL = baseURL;
+
+  fs.mkdirSync(browsersDir, { recursive: true });
+
+  const child = spawn(npx, ['playwright', ...args], {
     cwd: root,
-    env: { ...process.env, BASE_URL: baseURL, FORCE_COLOR: '0' },
+    env,
     shell: process.platform === 'win32',
   });
 
   activeRun = child;
-  broadcast('run-start', { suite: suiteKey, label: suite.label, baseURL });
+  broadcast('run-start', {
+    suite: suiteKey,
+    label,
+    kind,
+    baseURL: baseURL || readBaseUrl(),
+  });
 
-  const forward = (stream) => {
+  for (const stream of ['stdout', 'stderr']) {
     child[stream].on('data', (chunk) => {
       broadcast('log', { stream, text: chunk.toString() });
     });
-  };
-  forward('stdout');
-  forward('stderr');
+  }
 
   child.on('close', (code) => {
     activeRun = null;
+    const tools = getToolsStatus();
     broadcast('run-end', {
       suite: suiteKey,
-      label: suite.label,
+      label,
+      kind,
       code: code ?? 1,
       ok: code === 0,
+      tools,
     });
+    if (kind === 'install') {
+      broadcast('tools', tools);
+    }
   });
 
   child.on('error', (err) => {
@@ -161,13 +181,47 @@ function runSuite(suiteKey) {
     broadcast('log', { stream: 'stderr', text: String(err) });
     broadcast('run-end', {
       suite: suiteKey,
-      label: suite.label,
+      label,
+      kind,
       code: 1,
       ok: false,
+      tools: getToolsStatus(),
     });
   });
 
-  return { ok: true, suite: suiteKey, label: suite.label, baseURL };
+  return { ok: true, suite: suiteKey, label, kind };
+}
+
+function runSuite(suiteKey) {
+  const suite = SUITES[suiteKey];
+  if (!suite) {
+    return { ok: false, error: 'Unknown suite' };
+  }
+
+  const tools = getToolsStatus();
+  if (!tools.installed) {
+    return {
+      ok: false,
+      error:
+        'Playwright browsers are not installed in this repo yet. Use Install browsers first.',
+      tools,
+    };
+  }
+
+  return spawnPlaywright(suite.args, {
+    baseURL: readBaseUrl(),
+    label: suite.label,
+    suiteKey,
+    kind: 'test',
+  });
+}
+
+function installTools() {
+  return spawnPlaywright(['install'], {
+    label: 'Install browsers',
+    suiteKey: 'install',
+    kind: 'install',
+  });
 }
 
 async function readBody(req) {
@@ -186,6 +240,7 @@ const server = http.createServer(async (req, res) => {
   const { pathname } = url;
 
   if (req.method === 'GET' && pathname === '/api/config') {
+    const tools = getToolsStatus();
     return sendJson(res, 200, {
       baseURL: readBaseUrl(),
       suites: Object.entries(SUITES).map(([id, s]) => ({
@@ -193,7 +248,12 @@ const server = http.createServer(async (req, res) => {
         label: s.label,
       })),
       running: Boolean(activeRun),
+      tools,
     });
+  }
+
+  if (req.method === 'GET' && pathname === '/api/tools') {
+    return sendJson(res, 200, getToolsStatus());
   }
 
   if (req.method === 'POST' && pathname === '/api/config') {
@@ -206,6 +266,11 @@ const server = http.createServer(async (req, res) => {
     const baseURL = writeBaseUrl(body.url);
     broadcast('config', { baseURL });
     return sendJson(res, 200, { baseURL });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/install-tools') {
+    const result = installTools();
+    return sendJson(res, result.ok ? 200 : 409, result);
   }
 
   if (req.method === 'POST' && pathname === '/api/run') {
@@ -226,7 +291,14 @@ const server = http.createServer(async (req, res) => {
     }
     activeRun.kill();
     activeRun = null;
-    broadcast('run-end', { suite: 'stopped', label: 'Stopped', code: 1, ok: false });
+    broadcast('run-end', {
+      suite: 'stopped',
+      label: 'Stopped',
+      kind: 'stop',
+      code: 1,
+      ok: false,
+      tools: getToolsStatus(),
+    });
     return sendJson(res, 200, { ok: true, stopped: true });
   }
 
@@ -236,7 +308,12 @@ const server = http.createServer(async (req, res) => {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     });
-    res.write(`event: hello\ndata: ${JSON.stringify({ baseURL: readBaseUrl() })}\n\n`);
+    res.write(
+      `event: hello\ndata: ${JSON.stringify({
+        baseURL: readBaseUrl(),
+        tools: getToolsStatus(),
+      })}\n\n`,
+    );
     clients.add(res);
     req.on('close', () => clients.delete(res));
     return;
@@ -260,5 +337,11 @@ server.on('error', (err) => {
 });
 
 server.listen(PORT, () => {
+  const tools = getToolsStatus();
   console.log(`QA Website console → http://localhost:${PORT}`);
+  console.log(
+    tools.installed
+      ? `Browsers: ready (${browsersDir})`
+      : `Browsers: missing — open the console and click Install browsers`,
+  );
 });

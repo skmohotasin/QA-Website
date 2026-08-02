@@ -94,6 +94,7 @@ body {
 }
 
 .url-panel,
+.tools-panel,
 .suites,
 .console {
   background: var(--panel);
@@ -103,6 +104,38 @@ body {
   backdrop-filter: blur(10px);
   padding: 1.35rem 1.4rem 1.45rem;
   animation: rise 0.8s ease both;
+}
+
+.tools-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-color: rgba(180, 83, 9, 0.35);
+  background: rgba(255, 248, 235, 0.92);
+}
+
+.tools-panel[hidden] {
+  display: none !important;
+}
+
+.tools-copy h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.tools-copy p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  max-width: 52ch;
+}
+
+.tools-panel.is-ready {
+  border-color: rgba(22, 121, 76, 0.28);
+  background: rgba(236, 250, 242, 0.92);
 }
 
 .suites {
@@ -326,6 +359,11 @@ body {
 @media (max-width: 640px) {
   .url-form {
     grid-template-columns: 1fr;
+  }
+
+  .tools-panel {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .suite-grid {

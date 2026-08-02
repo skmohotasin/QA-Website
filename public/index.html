@@ -21,6 +21,18 @@
     </header>
 
     <main class="shell">
+      <section class="tools-panel" id="tools-panel" aria-labelledby="tools-heading" hidden>
+        <div class="tools-copy">
+          <h2 id="tools-heading">Browsers not installed</h2>
+          <p id="tools-message">
+            Playwright browsers must live in this repo before tests can run.
+          </p>
+        </div>
+        <button type="button" class="btn btn-primary" id="install-tools">
+          Install browsers
+        </button>
+      </section>
+
       <section class="url-panel" aria-labelledby="url-heading">
         <div class="url-copy">
           <h1 id="url-heading">Site under test</h1>

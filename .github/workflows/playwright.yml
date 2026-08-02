@@ -24,12 +24,15 @@ jobs:
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .playwright
 
       - name: Run Playwright tests
         run: npx playwright test
         env:
           # Override via repo Actions variable BASE_URL when ready
           BASE_URL: ${{ vars.BASE_URL }}
+          PLAYWRIGHT_BROWSERS_PATH: .playwright
           CI: true
 
       - name: Upload HTML report

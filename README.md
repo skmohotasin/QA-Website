@@ -18,7 +18,11 @@ Edit `.env` and set `BASE_URL` to the site you want to test.
 npm start
 ```
 
-Open **http://localhost:4173** — paste a website URL, then click a suite button (Smoke, Accessibility, API, All, Headed, All browsers). Live output streams in the page.
+Open **http://localhost:4173**
+
+1. If browsers are missing, click **Install browsers** (downloads into `.playwright/`, gitignored).
+2. Paste a website URL and save it.
+3. Run a suite (Smoke, A11y, API, etc.). Live output streams on the page.
 
 ## Run tests (CLI)
 
