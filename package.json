@@ -17,6 +17,7 @@
     "test:lighthouse": "node scripts/run-lighthouse.mjs",
     "test:discover-urls": "node scripts/discover-urls.mjs",
     "test:site-audit": "node scripts/audit-site.mjs",
+    "test:smoke-all": "node scripts/run-multi-url-suite.mjs smoke tests/smoke",
     "test:codegen": "playwright codegen"
   },
   "keywords": [

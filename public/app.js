@@ -19,7 +19,7 @@ const downloadReportTopBtn = document.querySelector('#download-report-top');
 const reportHeading = document.querySelector('#report-heading');
 
 const DESCRIPTIONS = {
-  smoke: 'Page load & basic content',
+  smoke: 'All saved URLs · page load & content',
   functional: 'Forms, auth, nav, search, cart, filters',
   uiux: 'Responsive layout + accessibility',
   a11y: 'axe WCAG critical / serious',
@@ -289,7 +289,8 @@ function updateReportUi(report, { highlight = false } = {}) {
     reportSummary.textContent = `${a.overall} · ${a.website} · ${a.totals.pages} pages · ${a.totals.passed} passed · ${a.totals.issues} issue(s) · ${a.date}`;
   } else if (s) {
     const bugText = bugCount ? ` · ${bugCount} bug ticket(s)` : '';
-    reportSummary.textContent = `${s.overall} · ${s.website} · ${s.totals.passed}/${s.totals.total} checks passed${bugText} · ${new Date(s.endedAt).toLocaleString()}`;
+    const pagesText = s.pageCount ? ` · ${s.pageCount} page(s)` : '';
+    reportSummary.textContent = `${s.overall} · ${s.website}${pagesText} · ${s.totals.passed}/${s.totals.total} checks passed${bugText} · ${new Date(s.endedAt).toLocaleString()}`;
   } else {
     reportSummary.textContent = 'Report ready. Use Summary or Full actions below.';
   }

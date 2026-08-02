@@ -28,7 +28,12 @@ const clients = new Set();
 const SUITES = {
   smoke: {
     label: 'Smoke',
-    args: ['test', 'tests/smoke', '--project=chromium'],
+    runner: 'multi-url',
+    args: [
+      path.join(root, 'scripts', 'run-multi-url-suite.mjs'),
+      'smoke',
+      'tests/smoke',
+    ],
   },
   functional: {
     label: 'Functional',
@@ -312,7 +317,12 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner }) {
 
   let command;
   let commandArgs;
-  if (runner === 'lighthouse' || runner === 'site-audit' || runner === 'discover-urls') {
+  if (
+    runner === 'lighthouse' ||
+    runner === 'site-audit' ||
+    runner === 'discover-urls' ||
+    runner === 'multi-url'
+  ) {
     command = process.execPath;
     commandArgs = args;
   } else {
@@ -397,7 +407,8 @@ function runSuite(suiteKey) {
   if (
     suite.runner === 'lighthouse' ||
     suite.runner === 'site-audit' ||
-    suite.runner === 'discover-urls'
+    suite.runner === 'discover-urls' ||
+    suite.runner === 'multi-url'
   ) {
     if (!chromium?.installed) {
       return {
@@ -416,9 +427,9 @@ function runSuite(suiteKey) {
     };
   }
 
-  if (suite.runner === 'site-audit') {
+  if (suite.runner === 'site-audit' || suite.runner === 'multi-url') {
     const urls = getSiteUrlsStatus();
-    if (!urls.available) {
+    if (suite.runner === 'site-audit' && !urls.available) {
       return {
         ok: false,
         error:

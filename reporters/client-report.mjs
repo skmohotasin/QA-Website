@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const REPORT_DIR = path.resolve('reports');
-const HTML_FILE = path.join(REPORT_DIR, 'client-report.html');
-const MD_FILE = path.join(REPORT_DIR, 'client-report.md');
-const JSON_FILE = path.join(REPORT_DIR, 'client-report.json');
-const BUGS_MD = path.join(REPORT_DIR, 'bug-reports.md');
-const BUGS_HTML = path.join(REPORT_DIR, 'bug-reports.html');
+const DEFAULT_REPORT_DIR = path.resolve('reports');
+
+function reportDir() {
+  return process.env.CLIENT_REPORT_DIR
+    ? path.resolve(process.env.CLIENT_REPORT_DIR)
+    : DEFAULT_REPORT_DIR;
+}
 
 const PLAIN = {
   'loads and returns a successful response': {
@@ -176,8 +177,6 @@ export default class ClientReportReporter {
   }
 
   onEnd(result) {
-    fs.mkdirSync(REPORT_DIR, { recursive: true });
-
     const endedAt = new Date();
     const passed = this.results.filter((r) => r.status === 'passed').length;
     const failed = this.results.filter((r) =>
@@ -187,7 +186,6 @@ export default class ClientReportReporter {
     const total = this.results.length;
     const overall =
       result.status === 'passed' && failed === 0 ? 'Passed' : 'Needs attention';
-    const overallTone = overall === 'Passed' ? 'pass' : 'fail';
 
     const summary = {
       website: this.baseURL,
@@ -199,12 +197,26 @@ export default class ClientReportReporter {
       bugs: this.bugs,
     };
 
-    fs.writeFileSync(JSON_FILE, JSON.stringify(summary, null, 2), 'utf8');
-    fs.writeFileSync(MD_FILE, renderMarkdown(summary), 'utf8');
-    fs.writeFileSync(HTML_FILE, renderHtml(summary, overallTone), 'utf8');
-    fs.writeFileSync(BUGS_MD, renderBugsMarkdown(summary), 'utf8');
-    fs.writeFileSync(BUGS_HTML, renderBugsHtml(summary), 'utf8');
+    writeClientReports(summary, reportDir());
   }
+}
+
+export function writeClientReports(summary, outDir = DEFAULT_REPORT_DIR) {
+  fs.mkdirSync(outDir, { recursive: true });
+  const overallTone = summary.overall === 'Passed' ? 'pass' : 'fail';
+  fs.writeFileSync(
+    path.join(outDir, 'client-report.json'),
+    JSON.stringify(summary, null, 2),
+    'utf8',
+  );
+  fs.writeFileSync(path.join(outDir, 'client-report.md'), renderMarkdown(summary), 'utf8');
+  fs.writeFileSync(
+    path.join(outDir, 'client-report.html'),
+    renderHtml(summary, overallTone),
+    'utf8',
+  );
+  fs.writeFileSync(path.join(outDir, 'bug-reports.md'), renderBugsMarkdown(summary), 'utf8');
+  fs.writeFileSync(path.join(outDir, 'bug-reports.html'), renderBugsHtml(summary), 'utf8');
 }
 
 function renderBugsMarkdown(summary) {
@@ -302,12 +314,14 @@ function renderBugsHtml(summary) {
 }
 
 function renderMarkdown(summary) {
+  const pageCount = summary.pageCount || summary.pages?.length || 0;
   const lines = [
     '# Website QA Report',
     '',
     `**Website:** ${summary.website}`,
     `**Date:** ${new Date(summary.endedAt).toLocaleString()}`,
     `**Overall result:** ${summary.overall}`,
+    pageCount ? `**Pages tested:** ${pageCount}` : null,
     '',
     '## Summary',
     '',
@@ -315,15 +329,29 @@ function renderMarkdown(summary) {
     `| --- | --- | --- | --- | --- |`,
     `| ${summary.totals.total} | ${summary.totals.passed} | ${summary.totals.failed} | ${summary.totals.skipped} | ${summary.totals.bugs} |`,
     '',
-    '## What we checked',
-    '',
-  ];
+  ].filter((line) => line !== null);
+
+  if (summary.pages?.length) {
+    lines.push('## Pages');
+    lines.push('');
+    for (const page of summary.pages) {
+      lines.push(
+        `- **${page.overall}** · ${page.url} · ${page.totals.passed}/${page.totals.total} checks · ${page.totals.bugs} bug(s)`,
+      );
+    }
+    lines.push('');
+  }
+
+  lines.push('## What we checked');
+  lines.push('');
 
   for (const item of summary.results) {
     const status = statusLabel(item.status).word;
+    const pageLine = item.pageUrl ? `- **Page:** ${item.pageUrl}` : null;
     lines.push(`### ${item.title}`);
     lines.push('');
     lines.push(`- **Result:** ${status}`);
+    if (pageLine) lines.push(pageLine);
     lines.push(`- **What this means:** ${item.meaning}`);
     lines.push(`- **Browser / device:** ${item.project}`);
     lines.push(`- **Time taken:** ${formatDuration(item.durationMs)}`);
@@ -336,7 +364,9 @@ function renderMarkdown(summary) {
   if (summary.bugs.length) {
     lines.push('## Bug tickets');
     lines.push('');
-    lines.push('See `bug-reports.md` / `bug-reports.html` for full tickets (steps, expected, actual, severity).');
+    lines.push(
+      'See `bug-reports.md` / `bug-reports.html` for full tickets (steps, expected, actual, severity).',
+    );
     lines.push('');
   }
 
@@ -348,6 +378,31 @@ function renderMarkdown(summary) {
 }
 
 function renderHtml(summary, overallTone) {
+  const pageCount = summary.pageCount || summary.pages?.length || 0;
+  const pageRows = summary.pages?.length
+    ? summary.pages
+        .map((page) => {
+          const tone = page.overall === 'Passed' ? 'pass' : 'fail';
+          return `<tr>
+            <td><a href="${escapeHtml(page.url)}">${escapeHtml(page.url)}</a></td>
+            <td><span class="badge ${tone}">${escapeHtml(page.overall)}</span></td>
+            <td>${page.totals.passed}/${page.totals.total}</td>
+            <td>${page.totals.bugs}</td>
+          </tr>`;
+        })
+        .join('')
+    : '';
+
+  const pagesBlock = pageRows
+    ? `<h2>Pages tested (${pageCount})</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>URL</th><th>Result</th><th>Checks</th><th>Bugs</th></tr></thead>
+      <tbody>${pageRows}</tbody>
+    </table>
+    </div>`
+    : '';
+
   const rows = summary.results
     .map((item) => {
       const status = statusLabel(item.status);
@@ -356,10 +411,14 @@ function renderHtml(summary, overallTone) {
           ? `${item.shortError.slice(0, 180)}…`
           : item.shortError
         : '';
+      const pageBit = item.pageUrl
+        ? `<div class="meaning">${escapeHtml(item.pageUrl)}</div>`
+        : '';
       return `
         <tr>
           <td>
             <strong>${escapeHtml(item.title)}</strong>
+            ${pageBit}
             <div class="meaning">${escapeHtml(item.meaning)}</div>
             ${
               issue
@@ -416,6 +475,7 @@ function renderHtml(summary, overallTone) {
       overflow: hidden;
     }
     h1 { margin: 0 0 0.35rem; font-size: 1.9rem; }
+    h2 { margin: 1.5rem 0 0.75rem; font-size: 1.2rem; }
     .sub { color: var(--muted); margin: 0 0 1.5rem; }
     .hero {
       display: flex;
@@ -503,12 +563,16 @@ function renderHtml(summary, overallTone) {
 
     <div class="meta">
       <div><span>Date</span><b>${escapeHtml(new Date(summary.endedAt).toLocaleString())}</b></div>
+      ${pageCount ? `<div><span>Pages</span><b>${pageCount}</b></div>` : ''}
       <div><span>Total checks</span><b>${summary.totals.total}</b></div>
       <div><span>Passed</span><b>${summary.totals.passed}</b></div>
       <div><span>Failed</span><b>${summary.totals.failed}</b></div>
       <div><span>Bugs</span><b>${summary.totals.bugs}</b></div>
     </div>
 
+    ${pagesBlock}
+
+    <h2>All checks</h2>
     <div class="table-wrap">
     <table>
       <thead>
