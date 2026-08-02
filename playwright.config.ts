@@ -1,9 +1,27 @@
 import { defineConfig, devices } from '@playwright/test';
-import dotenv from 'dotenv';
+import fs from 'node:fs';
+import path from 'node:path';
 import { applyBrowsersPath } from './lib/browsers.js';
 
-dotenv.config({ path: '.env' });
+// Strip color-env clash before workers boot (Cursor often sets NO_COLOR).
+delete process.env.NO_COLOR;
+
 applyBrowsersPath();
+
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  for (const line of fs.readFileSync(filePath, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim();
+    if (!(key in process.env)) process.env[key] = value;
+  }
+}
+
+loadEnvFile(path.resolve('.env'));
 
 const baseURL = process.env.BASE_URL || 'https://example.com';
 

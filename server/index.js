@@ -136,6 +136,22 @@ function playwrightCommand() {
   return { command: process.execPath, argsPrefix: [cli] };
 }
 
+function filterLogNoise(text) {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => {
+      if (!line) return true;
+      if (line.includes("NO_COLOR' env is ignored")) return false;
+      if (line.includes('NO_COLOR env is ignored')) return false;
+      if (line.includes('Use `node --trace-warnings')) return false;
+      if (line.includes('injected env')) return false;
+      if (line.includes('npm warn Unknown env config "devdir"')) return false;
+      if (line.includes('npm notice run')) return false;
+      return true;
+    })
+    .join('\n');
+}
+
 function spawnPlaywright(args, { baseURL, label, suiteKey, kind }) {
   if (activeRun) {
     return { ok: false, error: 'Another task is already in progress' };
@@ -152,6 +168,8 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind }) {
   // Avoid Node's "NO_COLOR ignored because FORCE_COLOR is set" worker warning.
   delete env.NO_COLOR;
   delete env.FORCE_COLOR;
+  // Keep worker startup quiet in the web console.
+  env.NODE_NO_WARNINGS = '1';
   if (baseURL) env.BASE_URL = baseURL;
 
   fs.mkdirSync(browsersDir, { recursive: true });
@@ -171,7 +189,8 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind }) {
 
   for (const stream of ['stdout', 'stderr']) {
     child[stream].on('data', (chunk) => {
-      broadcast('log', { stream, text: chunk.toString() });
+      const text = filterLogNoise(chunk.toString());
+      if (text) broadcast('log', { stream, text });
     });
   }
 
