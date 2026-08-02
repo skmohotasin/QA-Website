@@ -125,25 +125,39 @@ function serveStatic(req, res, pathname) {
   fs.createReadStream(filePath).pipe(res);
 }
 
+function playwrightCommand() {
+  const cli = path.join(
+    root,
+    'node_modules',
+    '@playwright',
+    'test',
+    'cli.js',
+  );
+  return { command: process.execPath, argsPrefix: [cli] };
+}
+
 function spawnPlaywright(args, { baseURL, label, suiteKey, kind }) {
   if (activeRun) {
     return { ok: false, error: 'Another task is already in progress' };
   }
 
-  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  const { command, argsPrefix } = playwrightCommand();
   const env = {
     ...process.env,
     FORCE_COLOR: '0',
+    NO_COLOR: '1',
     PLAYWRIGHT_BROWSERS_PATH: browsersDir,
   };
+  // Cursor/sandbox may inject this; npm warns on unknown config "devdir".
+  delete env.npm_config_devdir;
+  delete env.NPM_CONFIG_DEVDIR;
   if (baseURL) env.BASE_URL = baseURL;
 
   fs.mkdirSync(browsersDir, { recursive: true });
 
-  const child = spawn(npx, ['playwright', ...args], {
+  const child = spawn(command, [...argsPrefix, ...args], {
     cwd: root,
     env,
-    shell: process.platform === 'win32',
   });
 
   activeRun = child;
