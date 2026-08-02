@@ -83,6 +83,87 @@ function renderSummaryHtml(summary) {
 </html>`;
 }
 
+function renderSummaryMarkdown(summary) {
+  const lines = [
+    '# Lighthouse Summary',
+    '',
+    `**Website:** ${summary.website}`,
+    `**Date:** ${summary.date}`,
+    '',
+    '| Category | Score | What it means |',
+    '| --- | --- | --- |',
+  ];
+
+  for (const item of Object.values(summary.categories)) {
+    lines.push(`| ${item.title} | ${item.score ?? 'n/a'} | ${item.hint} |`);
+  }
+
+  lines.push('');
+  lines.push('See `lighthouse-full.md` / `lighthouse-full.html` for detailed findings.');
+  lines.push('');
+  return lines.join('\n');
+}
+
+function renderFullMarkdown(summary, lhr) {
+  const lines = [
+    '# Lighthouse Full Report',
+    '',
+    `**Website:** ${summary.website}`,
+    `**Final URL:** ${summary.finalUrl || summary.website}`,
+    `**Date:** ${summary.date}`,
+    '',
+    '## Scores',
+    '',
+    '| Category | Score |',
+    '| --- | --- |',
+  ];
+
+  for (const item of Object.values(summary.categories)) {
+    lines.push(`| ${item.title} | ${item.score ?? 'n/a'} |`);
+  }
+
+  lines.push('');
+  lines.push('## Issues to fix');
+  lines.push('');
+
+  const audits = lhr.audits || {};
+  const failed = Object.values(audits).filter(
+    (audit) =>
+      audit &&
+      audit.score !== null &&
+      audit.score < 1 &&
+      audit.scoreDisplayMode !== 'informative' &&
+      audit.scoreDisplayMode !== 'manual' &&
+      audit.scoreDisplayMode !== 'notApplicable',
+  );
+
+  if (!failed.length) {
+    lines.push('No failed audits were reported.');
+    lines.push('');
+  } else {
+    failed.sort((a, b) => (a.score ?? 1) - (b.score ?? 1));
+    for (const audit of failed.slice(0, 40)) {
+      lines.push(`### ${audit.title}`);
+      lines.push('');
+      lines.push(`- **ID:** ${audit.id}`);
+      lines.push(`- **Score:** ${audit.score == null ? 'n/a' : Math.round(audit.score * 100)}`);
+      if (audit.description) {
+        lines.push(`- **Details:** ${audit.description.replace(/\s+/g, ' ').trim()}`);
+      }
+      if (audit.displayValue) {
+        lines.push(`- **Value:** ${audit.displayValue}`);
+      }
+      lines.push('');
+    }
+  }
+
+  lines.push('---');
+  lines.push('');
+  lines.push('Open `lighthouse-full.html` for the interactive Lighthouse UI.');
+  lines.push('');
+  return lines.join('\n');
+}
+
 function toneFor(score) {
   if (score == null) return 'ok';
   if (score >= 90) return 'good';
@@ -159,14 +240,24 @@ async function main() {
       renderSummaryHtml(summary),
       'utf8',
     );
+    fs.writeFileSync(
+      path.join(reportsDir, 'lighthouse-summary.md'),
+      renderSummaryMarkdown(summary),
+      'utf8',
+    );
+    fs.writeFileSync(
+      path.join(reportsDir, 'lighthouse-full.md'),
+      renderFullMarkdown(summary, lhr),
+      'utf8',
+    );
 
     console.log('\nScores:');
     for (const item of Object.values(categories)) {
       console.log(`- ${item.title}: ${item.score ?? 'n/a'}`);
     }
     console.log('\nSaved:');
-    console.log('- reports/lighthouse-summary.html (client friendly)');
-    console.log('- reports/lighthouse-full.html (full Lighthouse detail)');
+    console.log('- reports/lighthouse-summary.html / .md');
+    console.log('- reports/lighthouse-full.html / .md');
     console.log('- reports/lighthouse.json');
   } finally {
     try {

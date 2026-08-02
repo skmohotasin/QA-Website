@@ -439,7 +439,9 @@ const server = http.createServer(async (req, res) => {
       pathname === '/reports/bug-reports.html' ||
       pathname === '/reports/bug-reports.md' ||
       pathname === '/reports/lighthouse-summary.html' ||
+      pathname === '/reports/lighthouse-summary.md' ||
       pathname === '/reports/lighthouse-full.html' ||
+      pathname === '/reports/lighthouse-full.md' ||
       pathname === '/reports/lighthouse.json')
   ) {
     const name = path.basename(pathname);

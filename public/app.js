@@ -76,10 +76,12 @@ function reportTargets(kind) {
     return {
       summaryHtml: '/reports/lighthouse-summary.html',
       summaryName: 'lighthouse-summary.html',
-      summaryMd: null,
+      summaryMd: '/reports/lighthouse-summary.md',
+      summaryMdName: 'lighthouse-summary.md',
       fullHtml: '/reports/lighthouse-full.html',
       fullName: 'lighthouse-full.html',
-      fullMd: null,
+      fullMd: '/reports/lighthouse-full.md',
+      fullMdName: 'lighthouse-full.md',
       bugsHtml: null,
       bugsMd: null,
     };
@@ -89,9 +91,11 @@ function reportTargets(kind) {
     summaryHtml: '/reports/client-report.html',
     summaryName: 'website-qa-summary.html',
     summaryMd: '/reports/client-report.md',
+    summaryMdName: 'website-qa-summary.md',
     fullHtml: '/reports/bug-reports.html',
     fullName: 'website-qa-full-bugs.html',
     fullMd: '/reports/bug-reports.md',
+    fullMdName: 'website-qa-full-bugs.md',
     bugsHtml: '/reports/bug-reports.html',
     bugsMd: '/reports/bug-reports.md',
   };
@@ -121,7 +125,7 @@ function wireReportActions(report) {
 
   const hasBugs = kind !== 'lighthouse' && bugCount > 0;
   const hasSummaryMd = Boolean(targets.summaryMd);
-  const hasFullMd = kind === 'lighthouse' ? false : hasBugs;
+  const hasFullMd = Boolean(targets.fullMd) && (kind === 'lighthouse' || hasBugs);
   const hasFullHtml =
     kind === 'lighthouse' ? true : hasBugs || Boolean(targets.summaryHtml);
 
@@ -444,7 +448,7 @@ reportPanel?.addEventListener('click', (event) => {
   if (action === 'summary-download') {
     downloadFile(targets.summaryHtml, targets.summaryName);
   } else if (action === 'summary-md' && targets.summaryMd) {
-    downloadFile(targets.summaryMd, 'website-qa-summary.md');
+    downloadFile(targets.summaryMd, targets.summaryMdName || 'website-qa-summary.md');
   } else if (action === 'summary-bugs' && targets.bugsHtml && bugCount > 0) {
     downloadFile(targets.bugsHtml, 'website-qa-bug-tickets.html');
   } else if (action === 'full-download') {
@@ -455,8 +459,10 @@ reportPanel?.addEventListener('click', (event) => {
     } else {
       downloadFile(targets.summaryHtml, targets.summaryName);
     }
-  } else if (action === 'full-md' && targets.fullMd && bugCount > 0) {
-    downloadFile(targets.fullMd, 'website-qa-full-bugs.md');
+  } else if (action === 'full-md' && targets.fullMd) {
+    if (latestKind === 'lighthouse' || bugCount > 0) {
+      downloadFile(targets.fullMd, targets.fullMdName || 'website-qa-full.md');
+    }
   } else if (action === 'full-bugs' && targets.bugsHtml && bugCount > 0) {
     downloadFile(targets.bugsHtml, 'website-qa-bug-tickets.html');
   }
