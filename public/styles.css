@@ -269,6 +269,19 @@ body {
   flex-wrap: wrap;
 }
 
+.btn-head {
+  padding: 0.45rem 0.8rem;
+  font-size: 0.9rem;
+  min-height: 36px;
+  line-height: 1.2;
+}
+
+.btn-head:not(:disabled).is-ready {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #f7fffd;
+}
+
 .section-head h2 {
   font-size: 1.25rem;
 }

@@ -240,19 +240,22 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind }) {
   child.on('close', (code) => {
     activeRun = null;
     const tools = getToolsStatus();
-    const report = kind === 'test' ? getClientReport() : { available: false };
-    broadcast('run-end', {
-      suite: suiteKey,
-      label,
-      kind,
-      code: code ?? 1,
-      ok: code === 0,
-      tools,
-      report,
-    });
-    if (kind === 'install') {
-      broadcast('tools', tools);
-    }
+    // Small delay so the client reporter can finish writing files.
+    setTimeout(() => {
+      const report = kind === 'test' ? getClientReport() : { available: false };
+      broadcast('run-end', {
+        suite: suiteKey,
+        label,
+        kind,
+        code: code ?? 1,
+        ok: code === 0,
+        tools,
+        report,
+      });
+      if (kind === 'install') {
+        broadcast('tools', tools);
+      }
+    }, 150);
   });
 
   child.on('error', (err) => {

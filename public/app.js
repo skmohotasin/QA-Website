@@ -64,9 +64,29 @@ function downloadFile(url, filename) {
 }
 
 function setDownloadEnabled(enabled) {
-  downloadReportBtn.disabled = !enabled;
-  downloadReportTopBtn.disabled = !enabled;
-  downloadMdBtn.disabled = !enabled;
+  for (const btn of [downloadReportBtn, downloadReportTopBtn, downloadMdBtn]) {
+    if (!btn) continue;
+    btn.disabled = !enabled;
+  }
+  downloadReportTopBtn?.classList.toggle('is-ready', enabled);
+}
+
+async function refreshReport({ highlight = false, retries = 8 } = {}) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const res = await fetch(`/api/report?t=${Date.now()}`);
+      const report = await res.json();
+      if (report?.available) {
+        updateReportUi(report, { highlight });
+        return report;
+      }
+    } catch {
+      // retry
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  updateReportUi({ available: false });
+  return null;
 }
 
 function updateReportUi(report, { highlight = false } = {}) {
@@ -87,11 +107,12 @@ function updateReportUi(report, { highlight = false } = {}) {
       'Your plain-language report is ready. Click Download report to save it.';
   }
 
-  openReportLink.href = `/reports/client-report.html?t=${Date.now()}`;
+  if (openReportLink) {
+    openReportLink.href = `/reports/client-report.html?t=${Date.now()}`;
+  }
 
   if (highlight) {
     reportPanel.classList.remove('is-new');
-    // Force reflow so animation can replay.
     void reportPanel.offsetWidth;
     reportPanel.classList.add('is-new');
     reportPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -140,7 +161,7 @@ async function loadConfig() {
   const data = await res.json();
   urlInput.value = data.baseURL || '';
   updateToolsUi(data.tools);
-  updateReportUi(data.report);
+  await refreshReport();
   renderSuites(data.suites || []);
   setRunning(Boolean(data.running));
   if (!data.tools?.installed) {
@@ -228,29 +249,43 @@ function connectEvents() {
     }
   });
 
-  source.addEventListener('run-end', (event) => {
+  source.addEventListener('run-end', async (event) => {
     const data = JSON.parse(event.data);
     if (data.tools) updateToolsUi(data.tools);
-    if (data.kind === 'test') {
-      updateReportUi(data.report, { highlight: Boolean(data.report?.available) });
-    }
     setRunning(false);
-    if (data.ok) {
-      appendLog(`\n✓ ${data.label} finished successfully\n`, 'ok');
-      if (data.kind === 'install') {
-        setStatus('Browsers installed — tests are ready', 'ok');
-      } else {
-        setStatus(`${data.label} passed — download report below`, 'ok');
-        if (data.report?.available) {
+
+    if (data.kind === 'test') {
+      const report = await refreshReport({ highlight: true });
+      if (data.ok) {
+        appendLog(`\n✓ ${data.label} finished successfully\n`, 'ok');
+        setStatus(
+          report?.available
+            ? `${data.label} passed — download report is ready`
+            : `${data.label} passed`,
+          'ok',
+        );
+        if (report?.available) {
           appendLog('▸ Report ready — click Download report\n', 'meta');
         }
+      } else {
+        appendLog(`\n✗ ${data.label} finished with code ${data.code}\n`, 'err');
+        setStatus(`${data.label} failed`, 'err');
+        if (report?.available) {
+          appendLog('▸ Report ready with failure details — click Download report\n', 'meta');
+        }
       }
+      return;
+    }
+
+    if (data.ok) {
+      appendLog(`\n✓ ${data.label} finished successfully\n`, 'ok');
+      setStatus(
+        data.kind === 'install' ? 'Browsers installed — tests are ready' : `${data.label} passed`,
+        'ok',
+      );
     } else {
       appendLog(`\n✗ ${data.label} finished with code ${data.code}\n`, 'err');
       setStatus(`${data.label} failed`, 'err');
-      if (data.report?.available) {
-        appendLog('▸ Report ready with failure details — click Download report\n', 'meta');
-      }
     }
   });
 
