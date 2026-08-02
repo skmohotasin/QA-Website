@@ -146,6 +146,38 @@ body {
   animation-delay: 0.14s;
 }
 
+.report-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+  padding: 1.35rem 1.4rem 1.45rem;
+  animation: rise 0.8s ease both;
+  animation-delay: 0.18s;
+}
+
+.report-panel[hidden] {
+  display: none !important;
+}
+
+.report-summary {
+  margin: 0 0 1rem;
+  color: var(--muted);
+}
+
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.report-actions .btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
 .url-copy h1,
 .section-head h2 {
   margin: 0;

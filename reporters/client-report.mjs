@@ -1,0 +1,307 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+const REPORT_DIR = path.resolve('reports');
+const HTML_FILE = path.join(REPORT_DIR, 'client-report.html');
+const MD_FILE = path.join(REPORT_DIR, 'client-report.md');
+const JSON_FILE = path.join(REPORT_DIR, 'client-report.json');
+
+const PLAIN = {
+  'loads and returns a successful response': {
+    title: 'Homepage opens correctly',
+    meaning: 'Visitors can reach the site and the server responds successfully.',
+  },
+  'has a visible main landmark or body content': {
+    title: 'Homepage content is visible',
+    meaning: 'The main page content appears on screen and is not blank.',
+  },
+  'homepage has no critical axe violations': {
+    title: 'Accessibility check',
+    meaning: 'No serious accessibility problems were found on the homepage.',
+  },
+  'base URL responds with HTTP 2xx': {
+    title: 'Website is reachable',
+    meaning: 'The website server answered with a healthy response.',
+  },
+};
+
+function plainLanguage(testTitle) {
+  const key = Object.keys(PLAIN).find((k) => testTitle.includes(k));
+  if (key) return PLAIN[key];
+  return {
+    title: testTitle,
+    meaning: 'Automated quality check for this page or feature.',
+  };
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+function formatDuration(ms) {
+  if (ms < 1000) return `${ms} ms`;
+  return `${(ms / 1000).toFixed(1)} s`;
+}
+
+function statusLabel(status) {
+  if (status === 'passed') return { word: 'Passed', tone: 'pass' };
+  if (status === 'failed') return { word: 'Failed', tone: 'fail' };
+  if (status === 'timedOut') return { word: 'Timed out', tone: 'fail' };
+  if (status === 'skipped') return { word: 'Skipped', tone: 'skip' };
+  return { word: status, tone: 'skip' };
+}
+
+/**
+ * Playwright reporter that writes a client-readable HTML + Markdown summary.
+ */
+export default class ClientReportReporter {
+  constructor() {
+    this.baseURL = process.env.BASE_URL || 'Not set';
+    this.startedAt = new Date();
+    this.results = [];
+  }
+
+  onBegin() {
+    this.startedAt = new Date();
+    this.results = [];
+  }
+
+  onTestEnd(test, result) {
+    const title = test.title;
+    const plain = plainLanguage(title);
+    const project = test.parent?.project()?.name || 'default';
+    const error = result.errors?.[0];
+    const shortError = error
+      ? String(error.message || error)
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean)[0]
+      : null;
+
+    this.results.push({
+      suite: test.parent?.title || 'Checks',
+      title: plain.title,
+      meaning: plain.meaning,
+      technicalTitle: title,
+      project,
+      status: result.status,
+      durationMs: result.duration,
+      shortError,
+    });
+  }
+
+  onEnd(result) {
+    fs.mkdirSync(REPORT_DIR, { recursive: true });
+
+    const endedAt = new Date();
+    const passed = this.results.filter((r) => r.status === 'passed').length;
+    const failed = this.results.filter((r) =>
+      ['failed', 'timedOut', 'interrupted'].includes(r.status),
+    ).length;
+    const skipped = this.results.filter((r) => r.status === 'skipped').length;
+    const total = this.results.length;
+    const overall =
+      result.status === 'passed' && failed === 0 ? 'Passed' : 'Needs attention';
+    const overallTone = overall === 'Passed' ? 'pass' : 'fail';
+
+    const summary = {
+      website: this.baseURL,
+      startedAt: this.startedAt.toISOString(),
+      endedAt: endedAt.toISOString(),
+      overall,
+      totals: { total, passed, failed, skipped },
+      results: this.results,
+    };
+
+    fs.writeFileSync(JSON_FILE, JSON.stringify(summary, null, 2), 'utf8');
+    fs.writeFileSync(MD_FILE, renderMarkdown(summary), 'utf8');
+    fs.writeFileSync(HTML_FILE, renderHtml(summary, overallTone), 'utf8');
+  }
+}
+
+function renderMarkdown(summary) {
+  const lines = [
+    '# Website QA Report',
+    '',
+    `**Website:** ${summary.website}`,
+    `**Date:** ${new Date(summary.endedAt).toLocaleString()}`,
+    `**Overall result:** ${summary.overall}`,
+    '',
+    '## Summary',
+    '',
+    `| Total checks | Passed | Failed | Skipped |`,
+    `| --- | --- | --- | --- |`,
+    `| ${summary.totals.total} | ${summary.totals.passed} | ${summary.totals.failed} | ${summary.totals.skipped} |`,
+    '',
+    '## What we checked',
+    '',
+  ];
+
+  for (const item of summary.results) {
+    const status = statusLabel(item.status).word;
+    lines.push(`### ${item.title}`);
+    lines.push('');
+    lines.push(`- **Result:** ${status}`);
+    lines.push(`- **What this means:** ${item.meaning}`);
+    lines.push(`- **Browser / device:** ${item.project}`);
+    lines.push(`- **Time taken:** ${formatDuration(item.durationMs)}`);
+    if (item.shortError) {
+      lines.push(`- **Issue found:** ${item.shortError}`);
+    }
+    lines.push('');
+  }
+
+  lines.push('---');
+  lines.push('');
+  lines.push('_Generated by QA Website automation._');
+  lines.push('');
+  return lines.join('\n');
+}
+
+function renderHtml(summary, overallTone) {
+  const rows = summary.results
+    .map((item) => {
+      const status = statusLabel(item.status);
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHtml(item.title)}</strong>
+            <div class="meaning">${escapeHtml(item.meaning)}</div>
+            ${
+              item.shortError
+                ? `<div class="issue">Issue: ${escapeHtml(item.shortError)}</div>`
+                : ''
+            }
+          </td>
+          <td><span class="badge ${status.tone}">${status.word}</span></td>
+          <td>${escapeHtml(item.project)}</td>
+          <td>${formatDuration(item.durationMs)}</td>
+        </tr>`;
+    })
+    .join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Website QA Report</title>
+  <style>
+    :root {
+      --ink: #12202b;
+      --muted: #5a6b78;
+      --line: #d7dde3;
+      --pass: #16794c;
+      --fail: #b42318;
+      --skip: #6b7280;
+      --pass-bg: #e8f7ef;
+      --fail-bg: #fdecec;
+      --skip-bg: #f3f4f6;
+      --paper: #fffdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: var(--ink);
+      background: #eef2f4;
+      line-height: 1.5;
+    }
+    .page {
+      max-width: 920px;
+      margin: 2rem auto;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 2rem;
+      box-shadow: 0 18px 40px rgba(18, 32, 43, 0.08);
+    }
+    h1 { margin: 0 0 0.35rem; font-size: 1.9rem; }
+    .sub { color: var(--muted); margin: 0 0 1.5rem; }
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: center;
+      padding: 1rem 1.1rem;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      margin-bottom: 1.25rem;
+    }
+    .hero.pass { background: var(--pass-bg); }
+    .hero.fail { background: var(--fail-bg); }
+    .hero strong { font-size: 1.25rem; }
+    .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
+    .meta div {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0.8rem 0.9rem;
+      background: #fff;
+    }
+    .meta span { display: block; color: var(--muted); font-size: 0.85rem; }
+    .meta b { font-size: 1.15rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 0.85rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-size: 0.85rem; font-weight: 600; }
+    .meaning { color: var(--muted); font-size: 0.92rem; margin-top: 0.2rem; }
+    .issue { color: var(--fail); font-size: 0.9rem; margin-top: 0.35rem; }
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    .badge.pass { background: var(--pass-bg); color: var(--pass); }
+    .badge.fail { background: var(--fail-bg); color: var(--fail); }
+    .badge.skip { background: var(--skip-bg); color: var(--skip); }
+    .footer { margin-top: 1.5rem; color: var(--muted); font-size: 0.9rem; }
+    @media print {
+      body { background: #fff; }
+      .page { box-shadow: none; border: none; margin: 0; max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <h1>Website QA Report</h1>
+    <p class="sub">A plain-language summary of automated checks for your website.</p>
+
+    <div class="hero ${overallTone}">
+      <div>
+        <div>Overall result</div>
+        <strong>${escapeHtml(summary.overall)}</strong>
+      </div>
+      <div>${escapeHtml(summary.website)}</div>
+    </div>
+
+    <div class="meta">
+      <div><span>Date</span><b>${escapeHtml(new Date(summary.endedAt).toLocaleString())}</b></div>
+      <div><span>Total checks</span><b>${summary.totals.total}</b></div>
+      <div><span>Passed</span><b>${summary.totals.passed}</b></div>
+      <div><span>Failed</span><b>${summary.totals.failed}</b></div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Check</th>
+          <th>Result</th>
+          <th>Browser</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+
+    <p class="footer">Generated by QA Website automation. You can print this page or save it as PDF (Ctrl+P).</p>
+  </main>
+</body>
+</html>`;
+}

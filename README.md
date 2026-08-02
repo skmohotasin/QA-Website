@@ -23,6 +23,9 @@ Open **http://localhost:4173**
 1. If browsers are missing, click **Install browsers** (downloads into `.playwright/`, gitignored).
 2. Paste a website URL and save it.
 3. Run a suite (Smoke, A11y, API, etc.). Live output streams on the page.
+4. Open the **Client report** (HTML) or download **Markdown** to send to your client.
+
+Client reports are written to `reports/client-report.html` and `reports/client-report.md` (plain language, not the technical Playwright UI).
 
 ## Run tests (CLI)
 

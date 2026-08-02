@@ -13,6 +13,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const publicDir = path.join(root, 'public');
+const reportsDir = path.join(root, 'reports');
 const envPath = path.join(root, '.env');
 const PORT = Number(process.env.PORT) || 4173;
 
@@ -96,6 +97,7 @@ function contentType(filePath) {
       '.html': 'text/html; charset=utf-8',
       '.css': 'text/css; charset=utf-8',
       '.js': 'text/javascript; charset=utf-8',
+      '.md': 'text/markdown; charset=utf-8',
       '.svg': 'image/svg+xml',
       '.json': 'application/json',
     }[ext] || 'application/octet-stream'
@@ -108,6 +110,47 @@ function sendJson(res, status, body) {
     'Cache-Control': 'no-store',
   });
   res.end(JSON.stringify(body));
+}
+
+function getClientReport() {
+  const html = path.join(reportsDir, 'client-report.html');
+  const md = path.join(reportsDir, 'client-report.md');
+  const json = path.join(reportsDir, 'client-report.json');
+  if (!fs.existsSync(html)) {
+    return { available: false };
+  }
+  let summary = null;
+  if (fs.existsSync(json)) {
+    try {
+      summary = JSON.parse(fs.readFileSync(json, 'utf8'));
+    } catch {
+      summary = null;
+    }
+  }
+  return {
+    available: true,
+    htmlUrl: '/reports/client-report.html',
+    mdUrl: '/reports/client-report.md',
+    jsonUrl: '/reports/client-report.json',
+    summary,
+    updatedAt: fs.statSync(html).mtime.toISOString(),
+  };
+}
+
+function serveFile(res, filePath, downloadName) {
+  if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+    res.writeHead(404).end('Not found');
+    return;
+  }
+  const headers = {
+    'Content-Type': contentType(filePath),
+    'Cache-Control': 'no-store',
+  };
+  if (downloadName) {
+    headers['Content-Disposition'] = `attachment; filename="${downloadName}"`;
+  }
+  res.writeHead(200, headers);
+  fs.createReadStream(filePath).pipe(res);
 }
 
 function serveStatic(req, res, pathname) {
@@ -197,6 +240,7 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind }) {
   child.on('close', (code) => {
     activeRun = null;
     const tools = getToolsStatus();
+    const report = kind === 'test' ? getClientReport() : { available: false };
     broadcast('run-end', {
       suite: suiteKey,
       label,
@@ -204,6 +248,7 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind }) {
       code: code ?? 1,
       ok: code === 0,
       tools,
+      report,
     });
     if (kind === 'install') {
       broadcast('tools', tools);
@@ -283,11 +328,31 @@ const server = http.createServer(async (req, res) => {
       })),
       running: Boolean(activeRun),
       tools,
+      report: getClientReport(),
     });
+  }
+
+  if (req.method === 'GET' && pathname === '/api/report') {
+    return sendJson(res, 200, getClientReport());
   }
 
   if (req.method === 'GET' && pathname === '/api/tools') {
     return sendJson(res, 200, getToolsStatus());
+  }
+
+  if (
+    req.method === 'GET' &&
+    (pathname === '/reports/client-report.html' ||
+      pathname === '/reports/client-report.md' ||
+      pathname === '/reports/client-report.json')
+  ) {
+    const name = path.basename(pathname);
+    const download = url.searchParams.get('download') === '1';
+    return serveFile(
+      res,
+      path.join(reportsDir, name),
+      download ? name : undefined,
+    );
   }
 
   if (req.method === 'POST' && pathname === '/api/config') {

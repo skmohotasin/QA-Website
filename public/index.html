@@ -75,6 +75,26 @@
         </div>
         <pre id="log" class="log" aria-live="polite"></pre>
       </section>
+
+      <section class="report-panel" id="report-panel" aria-labelledby="report-heading" hidden>
+        <div class="section-head">
+          <h2 id="report-heading">Client report</h2>
+        </div>
+        <p id="report-summary" class="report-summary">
+          Run a test suite to generate a plain-language report you can send to your client.
+        </p>
+        <div class="report-actions">
+          <a class="btn btn-primary" id="open-report" href="/reports/client-report.html" target="_blank" rel="noopener">
+            Open report
+          </a>
+          <a class="btn btn-ghost" id="download-html" href="/reports/client-report.html?download=1">
+            Download HTML
+          </a>
+          <a class="btn btn-ghost" id="download-md" href="/reports/client-report.md?download=1">
+            Download Markdown
+          </a>
+        </div>
+      </section>
     </main>
 
     <script src="/app.js" type="module"></script>

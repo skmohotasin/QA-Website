@@ -39,6 +39,7 @@ export default defineConfig({
     ['list'],
     ['html', { open: 'never' }],
     ['junit', { outputFile: 'test-results/junit.xml' }],
+    ['./reporters/client-report.mjs'],
   ],
   use: {
     baseURL,

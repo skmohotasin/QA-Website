@@ -9,6 +9,8 @@ const toolsPanel = document.querySelector('#tools-panel');
 const toolsMessage = document.querySelector('#tools-message');
 const toolsHeading = document.querySelector('#tools-heading');
 const installBtn = document.querySelector('#install-tools');
+const reportPanel = document.querySelector('#report-panel');
+const reportSummary = document.querySelector('#report-summary');
 
 const DESCRIPTIONS = {
   smoke: 'Page load & basic content',
@@ -45,6 +47,22 @@ function setRunning(isRunning, activeId = null) {
   }
   document.querySelector('#save-url').disabled = isRunning;
   urlInput.disabled = isRunning;
+}
+
+function updateReportUi(report) {
+  if (!report?.available) {
+    reportPanel.hidden = true;
+    return;
+  }
+
+  reportPanel.hidden = false;
+  const s = report.summary;
+  if (s) {
+    reportSummary.textContent = `${s.overall} · ${s.website} · ${s.totals.passed}/${s.totals.total} checks passed · ${new Date(s.endedAt).toLocaleString()}`;
+  } else {
+    reportSummary.textContent =
+      'Client-friendly report is ready. Open it, or download HTML/Markdown to send.';
+  }
 }
 
 function updateToolsUi(tools) {
@@ -89,6 +107,7 @@ async function loadConfig() {
   const data = await res.json();
   urlInput.value = data.baseURL || '';
   updateToolsUi(data.tools);
+  updateReportUi(data.report);
   renderSuites(data.suites || []);
   setRunning(Boolean(data.running));
   if (!data.tools?.installed) {
@@ -179,16 +198,24 @@ function connectEvents() {
   source.addEventListener('run-end', (event) => {
     const data = JSON.parse(event.data);
     if (data.tools) updateToolsUi(data.tools);
+    if (data.report) updateReportUi(data.report);
     setRunning(false);
     if (data.ok) {
       appendLog(`\n✓ ${data.label} finished successfully\n`, 'ok');
-      setStatus(
-        data.kind === 'install' ? 'Browsers installed — tests are ready' : `${data.label} passed`,
-        'ok',
-      );
+      if (data.kind === 'install') {
+        setStatus('Browsers installed — tests are ready', 'ok');
+      } else {
+        setStatus(`${data.label} passed — client report ready`, 'ok');
+        if (data.report?.available) {
+          appendLog('▸ Client report ready: Open report / Download HTML or Markdown\n', 'meta');
+        }
+      }
     } else {
       appendLog(`\n✗ ${data.label} finished with code ${data.code}\n`, 'err');
       setStatus(`${data.label} failed`, 'err');
+      if (data.report?.available) {
+        appendLog('▸ Client report ready with failure details\n', 'meta');
+      }
     }
   });
 
