@@ -22,6 +22,7 @@ const DESCRIPTIONS = {
   api: 'HTTP health of the base URL',
   regression: 'Full retest of all key suites',
   lighthouse: 'Performance, SEO, a11y, best practices',
+  'site-audit': 'Crawl & audit pages across the whole site',
   all: 'Everything on Chromium',
   headed: 'Watch the browser run',
   browsers: 'All engines + mobile',
@@ -87,6 +88,21 @@ function reportTargets(kind) {
     };
   }
 
+  if (kind === 'site-audit') {
+    return {
+      summaryHtml: '/reports/site-audit-summary.html',
+      summaryName: 'site-audit-summary.html',
+      summaryMd: '/reports/site-audit-summary.md',
+      summaryMdName: 'site-audit-summary.md',
+      fullHtml: '/reports/site-audit-full.html',
+      fullName: 'site-audit-full.html',
+      fullMd: '/reports/site-audit-full.md',
+      fullMdName: 'site-audit-full.md',
+      bugsHtml: '/reports/site-audit-full.html',
+      bugsMd: '/reports/site-audit-full.md',
+    };
+  }
+
   return {
     summaryHtml: '/reports/client-report.html',
     summaryName: 'website-qa-summary.html',
@@ -123,11 +139,17 @@ function wireReportActions(report) {
   latestKind = kind;
   latestReport = report;
 
-  const hasBugs = kind !== 'lighthouse' && bugCount > 0;
+  const hasBugs =
+    (kind === 'site-audit' && bugCount > 0) ||
+    (kind !== 'lighthouse' && kind !== 'site-audit' && bugCount > 0);
   const hasSummaryMd = Boolean(targets.summaryMd);
-  const hasFullMd = Boolean(targets.fullMd) && (kind === 'lighthouse' || hasBugs);
+  const hasFullMd =
+    Boolean(targets.fullMd) &&
+    (kind === 'lighthouse' || kind === 'site-audit' || hasBugs);
   const hasFullHtml =
-    kind === 'lighthouse' ? true : hasBugs || Boolean(targets.summaryHtml);
+    kind === 'lighthouse' || kind === 'site-audit'
+      ? true
+      : hasBugs || Boolean(targets.summaryHtml);
 
   if (downloadReportTopBtn) {
     downloadReportTopBtn.disabled = !ready;
@@ -136,7 +158,11 @@ function wireReportActions(report) {
 
   if (reportHeading) {
     reportHeading.textContent =
-      kind === 'lighthouse' ? 'Lighthouse report ready' : 'Client report ready';
+      kind === 'lighthouse'
+        ? 'Lighthouse report ready'
+        : kind === 'site-audit'
+          ? 'Full site audit ready'
+          : 'Client report ready';
   }
 
   // Summary set
@@ -165,14 +191,16 @@ function wireReportActions(report) {
   }
   if (actionEl('full-open') && ready && hasFullHtml) {
     const fullUrl =
-      kind === 'lighthouse' || hasBugs ? targets.fullHtml : targets.summaryHtml;
+      kind === 'lighthouse' || kind === 'site-audit' || hasBugs
+        ? targets.fullHtml
+        : targets.summaryHtml;
     actionEl('full-open').href = `${fullUrl}?t=${stamp}`;
   }
 }
 
 function downloadLatestReport() {
   const targets = reportTargets(latestKind);
-  if (latestKind === 'lighthouse') {
+  if (latestKind === 'lighthouse' || latestKind === 'site-audit') {
     downloadFile(targets.summaryHtml, targets.summaryName);
     setTimeout(() => downloadFile(targets.fullHtml, targets.fullName), 400);
     return;
@@ -221,6 +249,9 @@ function updateReportUi(report, { highlight = false } = {}) {
       .map((c) => `${c.title} ${c.score ?? 'n/a'}`)
       .join(' · ');
     reportSummary.textContent = `Lighthouse · ${lh.website} · ${scores}`;
+  } else if (kind === 'site-audit' && report.siteAudit) {
+    const a = report.siteAudit;
+    reportSummary.textContent = `${a.overall} · ${a.website} · ${a.totals.pages} pages · ${a.totals.passed} passed · ${a.totals.issues} issue(s) · ${a.date}`;
   } else if (s) {
     const bugText = bugCount ? ` · ${bugCount} bug ticket(s)` : '';
     reportSummary.textContent = `${s.overall} · ${s.website} · ${s.totals.passed}/${s.totals.total} checks passed${bugText} · ${new Date(s.endedAt).toLocaleString()}`;
@@ -371,20 +402,24 @@ function connectEvents() {
     if (data.tools) updateToolsUi(data.tools);
     setRunning(false);
 
-    if (data.kind === 'test' || data.kind === 'lighthouse') {
+    if (data.kind === 'test' || data.kind === 'lighthouse' || data.kind === 'site-audit') {
       const report = await refreshReport({ highlight: true });
       if (data.ok) {
         appendLog(`\n✓ ${data.label} finished successfully\n`, 'ok');
         setStatus(
           data.kind === 'lighthouse'
             ? 'Lighthouse report ready — download below'
-            : report?.available
-              ? `${data.label} passed — download report is ready`
-              : `${data.label} passed`,
+            : data.kind === 'site-audit'
+              ? 'Full site audit ready — download below'
+              : report?.available
+                ? `${data.label} passed — download report is ready`
+                : `${data.label} passed`,
           'ok',
         );
         if (data.kind === 'lighthouse') {
           appendLog('▸ Lighthouse summary + full report saved\n', 'meta');
+        } else if (data.kind === 'site-audit') {
+          appendLog('▸ Site audit summary + full issue report saved\n', 'meta');
         } else if (report?.available) {
           appendLog('▸ Report ready — click Download report\n', 'meta');
         }
@@ -450,9 +485,12 @@ reportPanel?.addEventListener('click', (event) => {
   } else if (action === 'summary-md' && targets.summaryMd) {
     downloadFile(targets.summaryMd, targets.summaryMdName || 'website-qa-summary.md');
   } else if (action === 'summary-bugs' && targets.bugsHtml && bugCount > 0) {
-    downloadFile(targets.bugsHtml, 'website-qa-bug-tickets.html');
+    downloadFile(
+      targets.bugsHtml,
+      latestKind === 'site-audit' ? 'site-audit-full.html' : 'website-qa-bug-tickets.html',
+    );
   } else if (action === 'full-download') {
-    if (latestKind === 'lighthouse') {
+    if (latestKind === 'lighthouse' || latestKind === 'site-audit') {
       downloadFile(targets.fullHtml, targets.fullName);
     } else if (bugCount > 0) {
       downloadFile(targets.fullHtml, targets.fullName);
@@ -460,11 +498,14 @@ reportPanel?.addEventListener('click', (event) => {
       downloadFile(targets.summaryHtml, targets.summaryName);
     }
   } else if (action === 'full-md' && targets.fullMd) {
-    if (latestKind === 'lighthouse' || bugCount > 0) {
+    if (latestKind === 'lighthouse' || latestKind === 'site-audit' || bugCount > 0) {
       downloadFile(targets.fullMd, targets.fullMdName || 'website-qa-full.md');
     }
   } else if (action === 'full-bugs' && targets.bugsHtml && bugCount > 0) {
-    downloadFile(targets.bugsHtml, 'website-qa-bug-tickets.html');
+    downloadFile(
+      targets.bugsHtml,
+      latestKind === 'site-audit' ? 'site-audit-full.html' : 'website-qa-bug-tickets.html',
+    );
   }
 });
 

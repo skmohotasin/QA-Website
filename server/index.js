@@ -62,6 +62,11 @@ const SUITES = {
     runner: 'lighthouse',
     args: [path.join(root, 'scripts', 'run-lighthouse.mjs')],
   },
+  'site-audit': {
+    label: 'Audit entire site',
+    runner: 'site-audit',
+    args: [path.join(root, 'scripts', 'audit-site.mjs')],
+  },
   all: {
     label: 'All suites',
     args: ['test', '--project=chromium'],
@@ -139,18 +144,21 @@ function sendJson(res, status, body) {
 
 function getClientReport() {
   const html = path.join(reportsDir, 'client-report.html');
-  const md = path.join(reportsDir, 'client-report.md');
   const json = path.join(reportsDir, 'client-report.json');
   const bugsHtml = path.join(reportsDir, 'bug-reports.html');
   const bugsMd = path.join(reportsDir, 'bug-reports.md');
   const lighthouseSummary = path.join(reportsDir, 'lighthouse-summary.html');
   const lighthouseFull = path.join(reportsDir, 'lighthouse-full.html');
   const lighthouseJson = path.join(reportsDir, 'lighthouse.json');
+  const siteSummary = path.join(reportsDir, 'site-audit-summary.html');
+  const siteFull = path.join(reportsDir, 'site-audit-full.html');
+  const siteJson = path.join(reportsDir, 'site-audit.json');
 
   const hasClient = fs.existsSync(html);
   const hasLighthouse = fs.existsSync(lighthouseSummary);
+  const hasSiteAudit = fs.existsSync(siteSummary);
 
-  if (!hasClient && !hasLighthouse) {
+  if (!hasClient && !hasLighthouse && !hasSiteAudit) {
     return { available: false };
   }
 
@@ -172,16 +180,25 @@ function getClientReport() {
     }
   }
 
-  const clientMtime = hasClient ? fs.statSync(html).mtimeMs : 0;
-  const lighthouseMtime = hasLighthouse
-    ? fs.statSync(lighthouseSummary).mtimeMs
-    : 0;
-  const latestKind =
-    lighthouseMtime > clientMtime ? 'lighthouse' : hasClient ? 'client' : 'lighthouse';
+  let siteAudit = null;
+  if (hasSiteAudit && fs.existsSync(siteJson)) {
+    try {
+      siteAudit = JSON.parse(fs.readFileSync(siteJson, 'utf8'));
+    } catch {
+      siteAudit = null;
+    }
+  }
 
-  const updatedAt = new Date(
-    Math.max(clientMtime, lighthouseMtime),
-  ).toISOString();
+  const clientMtime = hasClient ? fs.statSync(html).mtimeMs : 0;
+  const lighthouseMtime = hasLighthouse ? fs.statSync(lighthouseSummary).mtimeMs : 0;
+  const siteMtime = hasSiteAudit ? fs.statSync(siteSummary).mtimeMs : 0;
+  const newest = Math.max(clientMtime, lighthouseMtime, siteMtime);
+  let latestKind = 'client';
+  if (newest === siteMtime && hasSiteAudit) latestKind = 'site-audit';
+  else if (newest === lighthouseMtime && hasLighthouse) latestKind = 'lighthouse';
+  else if (hasClient) latestKind = 'client';
+  else if (hasSiteAudit) latestKind = 'site-audit';
+  else latestKind = 'lighthouse';
 
   return {
     available: true,
@@ -195,10 +212,16 @@ function getClientReport() {
     lighthouseFullUrl: fs.existsSync(lighthouseFull)
       ? '/reports/lighthouse-full.html'
       : null,
-    bugCount: summary?.totals?.bugs ?? summary?.bugs?.length ?? 0,
+    siteAuditSummaryUrl: hasSiteAudit ? '/reports/site-audit-summary.html' : null,
+    siteAuditFullUrl: fs.existsSync(siteFull) ? '/reports/site-audit-full.html' : null,
+    bugCount:
+      latestKind === 'site-audit'
+        ? siteAudit?.totals?.issues ?? 0
+        : summary?.totals?.bugs ?? summary?.bugs?.length ?? 0,
     summary,
     lighthouse,
-    updatedAt,
+    siteAudit,
+    updatedAt: new Date(newest).toISOString(),
   };
 }
 
@@ -283,7 +306,7 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner }) {
 
   let command;
   let commandArgs;
-  if (runner === 'lighthouse') {
+  if (runner === 'lighthouse' || runner === 'site-audit') {
     command = process.execPath;
     commandArgs = args;
   } else {
@@ -318,7 +341,9 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner }) {
     // Small delay so reporters can finish writing files.
     setTimeout(() => {
       const report =
-        kind === 'test' || kind === 'lighthouse' ? getClientReport() : { available: false };
+        kind === 'test' || kind === 'lighthouse' || kind === 'site-audit'
+          ? getClientReport()
+          : { available: false };
       broadcast('run-end', {
         suite: suiteKey,
         label,
@@ -359,7 +384,7 @@ function runSuite(suiteKey) {
 
   const tools = getToolsStatus();
   const chromium = tools.browsers.find((b) => b.id === 'chromium');
-  if (suite.runner === 'lighthouse') {
+  if (suite.runner === 'lighthouse' || suite.runner === 'site-audit') {
     if (!chromium?.installed) {
       return {
         ok: false,
@@ -381,7 +406,12 @@ function runSuite(suiteKey) {
     baseURL: readBaseUrl(),
     label: suite.label,
     suiteKey,
-    kind: suite.runner === 'lighthouse' ? 'lighthouse' : 'test',
+    kind:
+      suite.runner === 'lighthouse'
+        ? 'lighthouse'
+        : suite.runner === 'site-audit'
+          ? 'site-audit'
+          : 'test',
     runner: suite.runner,
   });
 }
@@ -442,7 +472,12 @@ const server = http.createServer(async (req, res) => {
       pathname === '/reports/lighthouse-summary.md' ||
       pathname === '/reports/lighthouse-full.html' ||
       pathname === '/reports/lighthouse-full.md' ||
-      pathname === '/reports/lighthouse.json')
+      pathname === '/reports/lighthouse.json' ||
+      pathname === '/reports/site-audit-summary.html' ||
+      pathname === '/reports/site-audit-summary.md' ||
+      pathname === '/reports/site-audit-full.html' ||
+      pathname === '/reports/site-audit-full.md' ||
+      pathname === '/reports/site-audit.json')
   ) {
     const name = path.basename(pathname);
     const download = url.searchParams.get('download') === '1';

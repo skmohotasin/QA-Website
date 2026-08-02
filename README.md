@@ -23,11 +23,13 @@ Open **http://localhost:4173**
 1. If browsers are missing, click **Install browsers** (downloads into `.playwright/`, gitignored).
 2. Paste a website URL and save it.
 3. Run a suite (Smoke, A11y, API, etc.). Live output streams on the page.
-4. Open the **Client report** (HTML) or download **Markdown** to send to your client.
-5. Use **Lighthouse** separately for Performance / SEO / Best Practices / Accessibility scores.
+4. Use **Audit entire site** to crawl same-origin pages and check HTTP status, serious a11y issues, and mobile overflow.
+5. Open the **Client report** (HTML) or download **Markdown** to send to your client.
+6. Use **Lighthouse** separately for Performance / SEO / Best Practices / Accessibility scores.
 
 Client reports are written to `reports/client-report.html` and `reports/client-report.md`.  
-Lighthouse reports: `reports/lighthouse-summary.html` (simple) and `reports/lighthouse-full.html` (full detail).
+Lighthouse reports: `reports/lighthouse-summary.html` (simple) and `reports/lighthouse-full.html` (full detail).  
+Site audit reports: `reports/site-audit-summary.html` / `.md` and `reports/site-audit-full.html` / `.md`.
 
 ## Run tests (CLI)
 
@@ -39,6 +41,8 @@ Lighthouse reports: `reports/lighthouse-summary.html` (simple) and `reports/ligh
 | `npm run test:ui` | Interactive Playwright UI |
 | `npm run test:headed` | See the browser |
 | `npm run test:debug` | Step-through debug |
+| `npm run test:lighthouse` | Lighthouse scores for `BASE_URL` |
+| `npm run test:site-audit` | Crawl & audit pages across the site |
 | `npm run test:codegen` | Record flows into tests |
 | `npm run test:report` | Open the last HTML report |
 
@@ -54,6 +58,8 @@ tests/
   helpers/        # Shared probes + bug metadata
   fixtures.ts     # Shared Playwright fixtures
 reporters/client-report.mjs   # Client report + bug tickets
+scripts/audit-site.mjs        # Full-site crawl & audit
+scripts/run-lighthouse.mjs    # Lighthouse runner
 playwright.config.ts
 .github/workflows/playwright.yml
 ```
