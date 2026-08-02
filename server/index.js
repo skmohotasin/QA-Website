@@ -144,10 +144,11 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind }) {
   const { command, argsPrefix } = playwrightCommand();
   const env = {
     ...process.env,
-    FORCE_COLOR: '0',
     NO_COLOR: '1',
     PLAYWRIGHT_BROWSERS_PATH: browsersDir,
   };
+  // Avoid NO_COLOR vs FORCE_COLOR conflict warnings from worker processes.
+  delete env.FORCE_COLOR;
   // Cursor/sandbox may inject this; npm warns on unknown config "devdir".
   delete env.npm_config_devdir;
   delete env.NPM_CONFIG_DEVDIR;
