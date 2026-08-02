@@ -264,16 +264,20 @@ function updateReportUi(report, { highlight = false } = {}) {
   const ready = Boolean(report?.available);
   wireReportActions(report || { available: false });
 
+  reportPanel.hidden = false;
+  reportPanel.classList.toggle('is-empty', !ready);
+
+  const kind = report?.latestKind || latestKind;
+  const s = report?.summary;
+  const lh = report?.lighthouse;
+  const bugCount = report?.bugCount ?? 0;
+
   if (!ready) {
-    reportPanel.hidden = true;
+    reportHeading.textContent = 'Download reports';
+    reportSummary.textContent =
+      'Run a suite or Audit entire site — then download Summary / Full reports here.';
     return;
   }
-
-  reportPanel.hidden = false;
-  const kind = report.latestKind || latestKind;
-  const s = report.summary;
-  const lh = report.lighthouse;
-  const bugCount = report.bugCount ?? 0;
 
   if (kind === 'lighthouse' && lh) {
     const scores = Object.values(lh.categories || {})

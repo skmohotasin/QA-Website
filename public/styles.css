@@ -158,6 +158,11 @@ body {
   background: rgba(236, 250, 242, 0.92);
 }
 
+.report-panel.is-empty {
+  border-color: var(--line);
+  background: var(--panel);
+}
+
 .report-panel[hidden] {
   display: none !important;
 }

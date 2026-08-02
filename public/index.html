@@ -101,12 +101,12 @@
         <pre id="log" class="log" aria-live="polite"></pre>
       </section>
 
-      <section class="report-panel" id="report-panel" aria-labelledby="report-heading" hidden>
+      <section class="report-panel" id="report-panel" aria-labelledby="report-heading">
         <div class="section-head">
-          <h2 id="report-heading">Client report ready</h2>
+          <h2 id="report-heading">Download reports</h2>
         </div>
         <p id="report-summary" class="report-summary">
-          Your plain-language report is ready to send to the client.
+          Run a suite or Audit entire site — then download Summary / Full reports here.
         </p>
 
         <div class="report-groups">
@@ -114,16 +114,16 @@
             <h3>Summary report</h3>
             <p class="report-group-note">Client-friendly overview</p>
             <div class="report-actions">
-              <button type="button" class="btn btn-primary" data-report-action="summary-download">
+              <button type="button" class="btn btn-primary" data-report-action="summary-download" disabled>
                 Download report
               </button>
               <button type="button" class="btn btn-ghost" data-report-action="summary-bugs" disabled>
                 Download bug tickets
               </button>
-              <a class="btn btn-ghost" data-report-action="summary-open" href="#" target="_blank" rel="noopener">
+              <a class="btn btn-ghost is-disabled" data-report-action="summary-open" href="#" target="_blank" rel="noopener" style="pointer-events: none; opacity: 0.45">
                 Open in browser
               </a>
-              <button type="button" class="btn btn-ghost" data-report-action="summary-md">
+              <button type="button" class="btn btn-ghost" data-report-action="summary-md" disabled>
                 Download Markdown
               </button>
             </div>
@@ -133,16 +133,16 @@
             <h3>Full report</h3>
             <p class="report-group-note">Detailed report for developers</p>
             <div class="report-actions">
-              <button type="button" class="btn btn-primary" data-report-action="full-download">
+              <button type="button" class="btn btn-primary" data-report-action="full-download" disabled>
                 Download report
               </button>
               <button type="button" class="btn btn-ghost" data-report-action="full-bugs" disabled>
                 Download bug tickets
               </button>
-              <a class="btn btn-ghost" data-report-action="full-open" href="#" target="_blank" rel="noopener">
+              <a class="btn btn-ghost is-disabled" data-report-action="full-open" href="#" target="_blank" rel="noopener" style="pointer-events: none; opacity: 0.45">
                 Open in browser
               </a>
-              <button type="button" class="btn btn-ghost" data-report-action="full-md">
+              <button type="button" class="btn btn-ghost" data-report-action="full-md" disabled>
                 Download Markdown
               </button>
             </div>
