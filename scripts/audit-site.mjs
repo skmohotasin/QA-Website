@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import AxeBuilder from '@axe-core/playwright';
 import { applyBrowsersPath, browsersDir } from '../lib/browsers.js';
 import { readSiteUrls, slugFromUrl } from '../lib/site-urls.js';
+import { getSuiteMeta } from '../lib/suite-meta.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const reportsDir = path.join(root, 'reports');
@@ -221,7 +222,8 @@ function savePageReport(pageResult, index) {
   return payload;
 }
 
-function buildSummary(pages, website, sourceList) {
+function buildSummary(pages, website, sourceList, scope = 'all') {
+  const meta = getSuiteMeta('site-audit');
   const passed = pages.filter(
     (p) => p.ok && !p.a11yIssues.length && !p.overflowMobile && !p.error,
   );
@@ -232,6 +234,11 @@ function buildSummary(pages, website, sourceList) {
 
   return {
     website,
+    suite: meta.label,
+    suiteDescription: meta.description,
+    suiteKey: 'site-audit',
+    scope,
+    scopeLabel: scope === 'all' ? 'All URLs' : 'Current URL',
     date: new Date().toLocaleString(),
     fetchedAt: new Date().toISOString(),
     sourceList: {
@@ -286,6 +293,10 @@ function renderSummaryHtml(summary) {
     main { max-width: 980px; margin: 2rem auto; background: #fffdf8; border: 1px solid #d7dde3; border-radius: 16px; padding: 2rem; overflow: hidden; }
     h1 { margin: 0 0 0.35rem; }
     .sub { color: #5a6b78; margin: 0 0 1rem; }
+    .suite { border: 1px solid #d7dde3; border-radius: 12px; padding: 0.9rem 1rem; margin: 0 0 1rem; background: #fff; }
+    .suite span { display: block; color: #5a6b78; font-size: 0.85rem; }
+    .suite strong { font-size: 1.15rem; }
+    .suite p { margin: 0.35rem 0 0; color: #5a6b78; }
     .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
     .meta div { border: 1px solid #d7dde3; border-radius: 10px; padding: 0.75rem; background: #fff; }
     .meta span { display: block; color: #5a6b78; font-size: 0.85rem; }
@@ -302,6 +313,12 @@ function renderSummaryHtml(summary) {
 <body>
   <main>
     <h1>Full Site Audit</h1>
+    <div class="suite">
+      <span>Test suite</span>
+      <strong>${escapeHtml(summary.suite || 'Audit entire site')}</strong>
+      <p>${escapeHtml(summary.suiteDescription || '')}</p>
+      <p>Scope: ${escapeHtml(summary.scopeLabel || 'All URLs')}</p>
+    </div>
     <p class="sub">${escapeHtml(summary.website)} · ${escapeHtml(summary.date)} · Overall: <strong>${escapeHtml(summary.overall)}</strong></p>
     <div class="meta">
       <div><span>Pages</span><b>${summary.totals.pages}</b></div>
@@ -363,7 +380,8 @@ function renderFullHtml(summary) {
 <body>
   <main>
     <h1>Full Site Audit — Details</h1>
-    <p>${escapeHtml(summary.website)} · ${escapeHtml(summary.date)} · ${summary.issues.length} issue(s)</p>
+    <p><strong>${escapeHtml(summary.suite || 'Audit entire site')}</strong> — ${escapeHtml(summary.suiteDescription || '')}</p>
+    <p>${escapeHtml(summary.website)} · ${escapeHtml(summary.date)} · ${summary.issues.length} issue(s) · ${escapeHtml(summary.scopeLabel || 'All URLs')}</p>
     ${issueBlocks}
   </main>
 </body>
@@ -374,6 +392,9 @@ function renderSummaryMarkdown(summary) {
   const lines = [
     '# Full Site Audit Summary',
     '',
+    `**Test:** ${summary.suite || 'Audit entire site'}`,
+    `**About this test:** ${summary.suiteDescription || ''}`,
+    `**Scope:** ${summary.scopeLabel || 'All URLs'}`,
     `**Website:** ${summary.website}`,
     `**Date:** ${summary.date}`,
     `**Overall:** ${summary.overall}`,
@@ -407,6 +428,9 @@ function renderFullMarkdown(summary) {
   const lines = [
     '# Full Site Audit — Developer Details',
     '',
+    `**Test:** ${summary.suite || 'Audit entire site'}`,
+    `**About this test:** ${summary.suiteDescription || ''}`,
+    `**Scope:** ${summary.scopeLabel || 'All URLs'}`,
     `**Website:** ${summary.website}`,
     `**Date:** ${summary.date}`,
     `**Issues:** ${summary.issues.length}`,
@@ -536,7 +560,7 @@ async function main() {
       writeAggregate(buildSummary(pages, website, {
         count: urls.length,
         discoveredAt: list?.discoveredAt ?? null,
-      }));
+      }, scope));
     }
   } finally {
     await browser.close();
@@ -545,7 +569,7 @@ async function main() {
   const summary = buildSummary(pages, website, {
     count: urls.length,
     discoveredAt: list?.discoveredAt ?? null,
-  });
+  }, scope);
   writeAggregate(summary);
 
   console.log('\nAudit complete');

@@ -313,6 +313,7 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner, scope }
   env.NODE_NO_WARNINGS = '1';
   if (baseURL) env.BASE_URL = baseURL;
   env.SITE_RUN_SCOPE = scope === 'all' ? 'all' : 'current';
+  if (suiteKey) env.REPORT_SUITE_KEY = suiteKey;
 
   fs.mkdirSync(browsersDir, { recursive: true });
 

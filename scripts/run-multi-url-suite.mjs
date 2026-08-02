@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { applyBrowsersPath, browsersDir } from '../lib/browsers.js';
 import { readSiteUrls, slugFromUrl } from '../lib/site-urls.js';
 import { writeClientReports } from '../reporters/client-report.mjs';
+import { getSuiteMeta } from '../lib/suite-meta.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const reportsDir = path.join(root, 'reports');
@@ -84,7 +85,8 @@ function runPlaywright(testArgs, env) {
   });
 }
 
-function mergeReports(pageReports, website, suiteLabel) {
+function mergeReports(pageReports, website, suiteKey, scope) {
+  const meta = getSuiteMeta(suiteKey);
   const startedAt =
     pageReports.map((p) => p.startedAt).sort()[0] || new Date().toISOString();
   const endedAt = new Date().toISOString();
@@ -104,7 +106,7 @@ function mergeReports(pageReports, website, suiteLabel) {
         ...item,
         pageUrl: page.website,
         title: item.title,
-        suite: `${suiteLabel} · ${page.website}`,
+        suite: `${meta.label} · ${page.website}`,
       });
     }
 
@@ -129,7 +131,11 @@ function mergeReports(pageReports, website, suiteLabel) {
 
   return {
     website,
-    suite: suiteLabel,
+    suiteKey,
+    suite: meta.label,
+    suiteDescription: meta.description,
+    scope,
+    scopeLabel: scope === 'all' ? 'All URLs' : 'Current URL',
     pageCount: pages.length,
     pages,
     startedAt,
@@ -145,7 +151,8 @@ async function main() {
   const suiteKey = process.argv[2] || 'smoke';
   const testPaths = process.argv.slice(3);
   const paths = testPaths.length ? testPaths : ['tests/smoke'];
-  const suiteLabel = suiteKey.charAt(0).toUpperCase() + suiteKey.slice(1);
+  const meta = getSuiteMeta(suiteKey);
+  const suiteLabel = meta.label;
   const scope = process.env.SITE_RUN_SCOPE === 'all' ? 'all' : 'current';
 
   const list = readSiteUrls();
@@ -183,6 +190,7 @@ async function main() {
       ...process.env,
       BASE_URL: website.replace(/\/$/, '') || website,
       PAGE_URL: url,
+      REPORT_SUITE_KEY: suiteKey,
       CLIENT_REPORT_DIR: outDir,
       PLAYWRIGHT_BROWSERS_PATH: browsersDir,
       NODE_NO_WARNINGS: '1',
@@ -247,7 +255,7 @@ async function main() {
     if (code !== 0) failedRuns += 1;
   }
 
-  const merged = mergeReports(pageReports, website, suiteLabel);
+  const merged = mergeReports(pageReports, website, suiteKey, scope);
   writeClientReports(merged, reportsDir);
 
   console.log('\nCombined report written');

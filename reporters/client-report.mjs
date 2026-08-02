@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { getSuiteMeta } from '../lib/suite-meta.js';
 
 const DEFAULT_REPORT_DIR = path.resolve('reports');
 
@@ -186,9 +187,17 @@ export default class ClientReportReporter {
     const total = this.results.length;
     const overall =
       result.status === 'passed' && failed === 0 ? 'Passed' : 'Needs attention';
+    const suiteKey = process.env.REPORT_SUITE_KEY || 'client';
+    const meta = getSuiteMeta(suiteKey);
+    const scope = process.env.SITE_RUN_SCOPE === 'all' ? 'all' : 'current';
 
     const summary = {
       website: this.baseURL,
+      suiteKey,
+      suite: meta.label,
+      suiteDescription: meta.description,
+      scope,
+      scopeLabel: scope === 'all' ? 'All URLs' : 'Current URL',
       startedAt: this.startedAt.toISOString(),
       endedAt: endedAt.toISOString(),
       overall,
@@ -201,7 +210,21 @@ export default class ClientReportReporter {
   }
 }
 
-export function writeClientReports(summary, outDir = DEFAULT_REPORT_DIR) {
+function enrichSummary(summary) {
+  const meta = getSuiteMeta(summary.suiteKey || summary.suite || 'client');
+  const scope = summary.scope === 'all' ? 'all' : 'current';
+  return {
+    ...summary,
+    suiteKey: summary.suiteKey || meta.label.toLowerCase(),
+    suite: summary.suite || meta.label,
+    suiteDescription: summary.suiteDescription || meta.description,
+    scope,
+    scopeLabel: summary.scopeLabel || (scope === 'all' ? 'All URLs' : 'Current URL'),
+  };
+}
+
+export function writeClientReports(rawSummary, outDir = DEFAULT_REPORT_DIR) {
+  const summary = enrichSummary(rawSummary);
   fs.mkdirSync(outDir, { recursive: true });
   const overallTone = summary.overall === 'Passed' ? 'pass' : 'fail';
   fs.writeFileSync(
@@ -238,22 +261,30 @@ function renderBugsMarkdown(summary) {
     return [
       '# Bug Reports',
       '',
+      `**Test:** ${summary.suite || 'QA checks'}`,
+      summary.suiteDescription ? `**About this test:** ${summary.suiteDescription}` : null,
       `**Website:** ${summary.website}`,
+      `**Scope:** ${summary.scopeLabel || 'Current URL'}`,
       `**Date:** ${new Date(summary.endedAt).toLocaleString()}`,
       '',
       'No bugs were found in this run.',
       '',
-    ].join('\n');
+    ]
+      .filter((line) => line !== null)
+      .join('\n');
   }
 
   const lines = [
     '# Bug Reports',
     '',
+    `**Test:** ${summary.suite || 'QA checks'}`,
+    summary.suiteDescription ? `**About this test:** ${summary.suiteDescription}` : null,
     `**Website:** ${summary.website}`,
+    `**Scope:** ${summary.scopeLabel || 'Current URL'}`,
     `**Date:** ${new Date(summary.endedAt).toLocaleString()}`,
     `**Bugs found:** ${summary.bugs.length}`,
     '',
-  ];
+  ].filter((line) => line !== null);
 
   for (const bug of summary.bugs) {
     lines.push(`## ${bug.id}: ${bug.title}`);
@@ -306,11 +337,15 @@ function renderBugsHtml(summary) {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Bug Reports</title>
+  <title>Bug Reports · ${escapeHtml(summary.suite || 'QA')}</title>
   <style>
     body { font-family: "Segoe UI", Tahoma, sans-serif; margin: 0; background: #eef2f4; color: #12202b; }
     main { max-width: 860px; margin: 2rem auto; background: #fffdf8; padding: 2rem; border-radius: 16px; border: 1px solid #d7dde3; }
     h1 { margin-top: 0; }
+    .suite { border: 1px solid #d7dde3; border-radius: 12px; padding: 0.9rem 1rem; margin: 0 0 1rem; background: #fff; }
+    .suite span { display: block; color: #5a6b78; font-size: 0.85rem; }
+    .suite strong { font-size: 1.15rem; }
+    .suite p { margin: 0.35rem 0 0; color: #5a6b78; }
     .bug { border-top: 1px solid #d7dde3; padding-top: 1rem; margin-top: 1rem; }
     pre { white-space: pre-wrap; background: #f5f7f8; padding: 0.8rem; border-radius: 8px; }
     .actual { color: #b42318; }
@@ -320,6 +355,12 @@ function renderBugsHtml(summary) {
 <body>
   <main>
     <h1>Bug Reports</h1>
+    <div class="suite">
+      <span>Test suite</span>
+      <strong>${escapeHtml(summary.suite || 'QA checks')}</strong>
+      <p>${escapeHtml(summary.suiteDescription || 'Automated quality checks for your website.')}</p>
+      <p>Scope: ${escapeHtml(summary.scopeLabel || 'Current URL')}</p>
+    </div>
     <p>${escapeHtml(summary.website)} · ${escapeHtml(new Date(summary.endedAt).toLocaleString())} · ${summary.bugs.length} bug(s)</p>
     ${body}
   </main>
@@ -427,6 +468,16 @@ function sharedReportStyles() {
     .badge.fail { background: var(--fail-bg); color: var(--fail); }
     .badge.skip { background: var(--skip-bg); color: var(--skip); }
     .footer { margin-top: 1.5rem; color: var(--muted); font-size: 0.9rem; }
+    .suite-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.95rem 1.05rem;
+      margin: 0 0 1.25rem;
+      background: #fff;
+    }
+    .suite-card span { display: block; color: var(--muted); font-size: 0.85rem; }
+    .suite-card strong { display: block; font-size: 1.2rem; margin-top: 0.15rem; }
+    .suite-card p { margin: 0.4rem 0 0; color: var(--muted); }
     @media print {
       body { background: #fff; }
       .page { box-shadow: none; border: none; margin: 0; max-width: none; overflow: visible; }
@@ -434,11 +485,29 @@ function sharedReportStyles() {
   `;
 }
 
+function suiteCardHtml(summary) {
+  return `<div class="suite-card">
+      <span>Test suite</span>
+      <strong>${escapeHtml(summary.suite || 'QA checks')}</strong>
+      <p>${escapeHtml(summary.suiteDescription || 'Automated quality checks for your website.')}</p>
+      <p>Scope: ${escapeHtml(summary.scopeLabel || 'Current URL')}</p>
+    </div>`;
+}
+
+function suiteMetaMarkdown(summary) {
+  return [
+    `**Test:** ${summary.suite || 'QA checks'}`,
+    summary.suiteDescription ? `**About this test:** ${summary.suiteDescription}` : null,
+    `**Scope:** ${summary.scopeLabel || 'Current URL'}`,
+  ].filter((line) => line !== null);
+}
+
 function renderSummaryMarkdown(summary) {
   const pageCount = summary.pageCount || summary.pages?.length || 0;
   return [
     '# Website QA Report',
     '',
+    ...suiteMetaMarkdown(summary),
     `**Website:** ${summary.website}`,
     `**Date:** ${new Date(summary.endedAt).toLocaleString()}`,
     `**Overall result:** ${summary.overall}`,
@@ -462,6 +531,7 @@ function renderFullMarkdown(summary) {
   const lines = [
     '# Website QA Report — Full',
     '',
+    ...suiteMetaMarkdown(summary),
     `**Website:** ${summary.website}`,
     `**Date:** ${new Date(summary.endedAt).toLocaleString()}`,
     `**Overall result:** ${summary.overall}`,
@@ -529,13 +599,15 @@ function renderSummaryHtml(summary, overallTone) {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Website QA Report</title>
+  <title>${escapeHtml(summary.suite || 'Website QA')} Report</title>
   <style>${sharedReportStyles()}</style>
 </head>
 <body>
   <main class="page">
     <h1>Website QA Report</h1>
     <p class="sub">A plain-language summary of automated checks for your website.</p>
+
+    ${suiteCardHtml(summary)}
 
     <div class="hero ${overallTone}">
       <div>
@@ -625,13 +697,15 @@ function renderFullHtml(summary, overallTone) {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Website QA Report — Full</title>
+  <title>${escapeHtml(summary.suite || 'Website QA')} Report — Full</title>
   <style>${sharedReportStyles()}</style>
 </head>
 <body>
   <main class="page">
     <h1>Website QA Report</h1>
     <p class="sub">Detailed automated checks for your website.</p>
+
+    ${suiteCardHtml(summary)}
 
     <div class="hero ${overallTone}">
       <div>

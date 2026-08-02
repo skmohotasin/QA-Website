@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import lighthouse from 'lighthouse';
 import * as chromeLauncher from 'chrome-launcher';
 import { applyBrowsersPath, browsersDir } from '../lib/browsers.js';
+import { getSuiteMeta } from '../lib/suite-meta.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const reportsDir = path.join(root, 'reports');
@@ -59,6 +60,10 @@ function renderSummaryHtml(summary) {
     main { max-width: 720px; margin: 2rem auto; background: #fffdf8; border: 1px solid #d7dde3; border-radius: 16px; padding: 2rem; }
     h1 { margin: 0 0 0.35rem; }
     .sub { color: #5a6b78; margin: 0 0 1.25rem; }
+    .suite { border: 1px solid #d7dde3; border-radius: 12px; padding: 0.9rem 1rem; margin: 0 0 1rem; background: #fff; }
+    .suite span { display: block; color: #5a6b78; font-size: 0.85rem; }
+    .suite strong { font-size: 1.15rem; }
+    .suite p { margin: 0.35rem 0 0; color: #5a6b78; }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     th, td { text-align: left; padding: 0.85rem 0.5rem; border-bottom: 1px solid #d7dde3; vertical-align: top; overflow-wrap: anywhere; }
     .hint { color: #5a6b78; font-size: 0.9rem; margin-top: 0.2rem; }
@@ -72,6 +77,11 @@ function renderSummaryHtml(summary) {
 <body>
   <main>
     <h1>Lighthouse Report</h1>
+    <div class="suite">
+      <span>Test suite</span>
+      <strong>${summary.suite || 'Lighthouse'}</strong>
+      <p>${summary.suiteDescription || ''}</p>
+    </div>
     <p class="sub">${summary.website}<br/>${summary.date}</p>
     <table>
       <thead><tr><th>Category</th><th>Score</th></tr></thead>
@@ -87,6 +97,8 @@ function renderSummaryMarkdown(summary) {
   const lines = [
     '# Lighthouse Summary',
     '',
+    `**Test:** ${summary.suite || 'Lighthouse'}`,
+    `**About this test:** ${summary.suiteDescription || ''}`,
     `**Website:** ${summary.website}`,
     `**Date:** ${summary.date}`,
     '',
@@ -108,6 +120,8 @@ function renderFullMarkdown(summary, lhr) {
   const lines = [
     '# Lighthouse Full Report',
     '',
+    `**Test:** ${summary.suite || 'Lighthouse'}`,
+    `**About this test:** ${summary.suiteDescription || ''}`,
     `**Website:** ${summary.website}`,
     `**Final URL:** ${summary.finalUrl || summary.website}`,
     `**Date:** ${summary.date}`,
@@ -220,8 +234,12 @@ async function main() {
       };
     }
 
+    const meta = getSuiteMeta('lighthouse');
     const summary = {
       website,
+      suite: meta.label,
+      suiteDescription: meta.description,
+      suiteKey: 'lighthouse',
       date: new Date().toLocaleString(),
       fetchedAt: new Date().toISOString(),
       categories,

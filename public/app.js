@@ -337,14 +337,15 @@ function updateReportUi(report, { highlight = false } = {}) {
     const scores = Object.values(lh.categories || {})
       .map((c) => `${c.title} ${c.score ?? 'n/a'}`)
       .join(' · ');
-    reportSummary.textContent = `Lighthouse · ${lh.website} · ${scores}`;
+    reportSummary.textContent = `${lh.suite || 'Lighthouse'} · ${lh.website} · ${scores}`;
   } else if (kind === 'site-audit' && report.siteAudit) {
     const a = report.siteAudit;
-    reportSummary.textContent = `${a.overall} · ${a.website} · ${a.totals.pages} pages · ${a.totals.passed} passed · ${a.totals.issues} issue(s) · ${a.date}`;
+    reportSummary.textContent = `${a.suite || 'Audit entire site'} · ${a.overall} · ${a.website} · ${a.totals.pages} pages · ${a.totals.passed} passed · ${a.totals.issues} issue(s) · ${a.date}`;
   } else if (s) {
     const bugText = bugCount ? ` · ${bugCount} bug ticket(s)` : '';
     const pagesText = s.pageCount ? ` · ${s.pageCount} page(s)` : '';
-    reportSummary.textContent = `${s.overall} · ${s.website}${pagesText} · ${s.totals.passed}/${s.totals.total} checks passed${bugText} · ${new Date(s.endedAt).toLocaleString()}`;
+    const suiteText = s.suite ? `${s.suite} · ` : '';
+    reportSummary.textContent = `${suiteText}${s.overall} · ${s.website}${pagesText} · ${s.totals.passed}/${s.totals.total} checks passed${bugText} · ${new Date(s.endedAt).toLocaleString()}`;
   } else {
     reportSummary.textContent = 'Report ready. Use Summary or Full actions below.';
   }
