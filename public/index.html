@@ -80,6 +80,16 @@
             Stop
           </button>
         </div>
+        <div class="scope-bar" role="group" aria-label="URL scope">
+          <span class="scope-label">Run on</span>
+          <button type="button" class="btn btn-scope is-active" id="scope-current" data-scope="current">
+            Current URL
+          </button>
+          <button type="button" class="btn btn-scope" id="scope-all" data-scope="all">
+            All URLs
+          </button>
+          <span class="scope-hint" id="scope-hint">Uses the saved website URL only</span>
+        </div>
         <div class="suite-grid" id="suite-grid"></div>
       </section>
 

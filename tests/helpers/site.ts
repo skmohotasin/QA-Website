@@ -15,8 +15,12 @@ export function bugMeta(
   );
 }
 
+export function targetPath() {
+  return process.env.PAGE_URL || '/';
+}
+
 export async function gotoHome(page: Page) {
-  const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const response = await page.goto(targetPath(), { waitUntil: 'domcontentloaded' });
   return response;
 }
 

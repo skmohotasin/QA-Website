@@ -1,19 +1,19 @@
 import { test, expect } from '../fixtures';
-import { bugMeta } from '../helpers/site';
+import { bugMeta, targetPath } from '../helpers/site';
 
 test.describe('Accessibility', () => {
   test('homepage has no critical axe violations', async ({ page, makeAxeBuilder }, info) => {
     bugMeta(info, {
       severity: 'High',
       steps: [
-        '1. Open the homepage.',
+        `1. Open ${targetPath()}.`,
         '2. Run an automated accessibility scan (WCAG 2 A/AA).',
         '3. Review critical and serious findings.',
       ],
-      expected: 'No critical or serious accessibility violations on the homepage.',
+      expected: 'No critical or serious accessibility violations on the page.',
     });
 
-    await page.goto('/');
+    await page.goto(targetPath());
 
     const results = await makeAxeBuilder()
       .withTags(['wcag2a', 'wcag2aa'])

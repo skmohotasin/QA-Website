@@ -454,16 +454,23 @@ function writeAggregate(summary) {
 }
 
 async function main() {
+  const scope = process.env.SITE_RUN_SCOPE === 'current' ? 'current' : 'all';
   const list = readSiteUrls();
-  if (!list?.urls?.length) {
-    console.error(
-      'No URL list found. Click "Find all URLs" first (saves data/site-urls.json).',
-    );
-    process.exit(1);
-  }
+  const fallback = (process.env.BASE_URL || 'https://example.com').replace(/\/$/, '');
+  const website = list?.website || fallback;
 
-  const website = list.website || process.env.BASE_URL || 'https://example.com';
-  const urls = list.urls;
+  let urls;
+  if (scope === 'current') {
+    urls = [fallback.endsWith('/') ? fallback : `${fallback}/`];
+  } else {
+    if (!list?.urls?.length) {
+      console.error(
+        'No URL list found. Click "Find all URLs" first (saves data/site-urls.json), or choose Current URL.',
+      );
+      process.exit(1);
+    }
+    urls = list.urls;
+  }
 
   const require = createRequire(import.meta.url);
   const { chromium } = require('playwright-core');
@@ -473,9 +480,11 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Full site audit from saved URL list → ${website}`);
-  console.log(`URLs in list: ${urls.length}`);
-  console.log(`Source: data/site-urls.json (${list.discoveredAt || 'unknown date'})`);
+  console.log(`Site audit · scope=${scope} → ${website}`);
+  console.log(`URLs: ${urls.length}`);
+  if (scope === 'all') {
+    console.log(`Source: data/site-urls.json (${list.discoveredAt || 'unknown date'})`);
+  }
   console.log(`Browsers: ${browsersDir}`);
 
   clearDir(pagesDir);
@@ -524,13 +533,19 @@ async function main() {
       }
 
       // Keep aggregate fresh so a long run still has a usable report if stopped.
-      writeAggregate(buildSummary(pages, website, list));
+      writeAggregate(buildSummary(pages, website, {
+        count: urls.length,
+        discoveredAt: list?.discoveredAt ?? null,
+      }));
     }
   } finally {
     await browser.close();
   }
 
-  const summary = buildSummary(pages, website, list);
+  const summary = buildSummary(pages, website, {
+    count: urls.length,
+    discoveredAt: list?.discoveredAt ?? null,
+  });
   writeAggregate(summary);
 
   console.log('\nAudit complete');

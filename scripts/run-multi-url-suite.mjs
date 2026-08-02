@@ -143,18 +143,25 @@ function mergeReports(pageReports, website, suiteLabel) {
 
 async function main() {
   const suiteKey = process.argv[2] || 'smoke';
-  const testPath = process.argv[3] || 'tests/smoke';
+  const testPaths = process.argv.slice(3);
+  const paths = testPaths.length ? testPaths : ['tests/smoke'];
   const suiteLabel = suiteKey.charAt(0).toUpperCase() + suiteKey.slice(1);
+  const scope = process.env.SITE_RUN_SCOPE === 'all' ? 'all' : 'current';
 
   const list = readSiteUrls();
   const fallback = (process.env.BASE_URL || 'https://example.com').replace(/\/$/, '');
   const website = list?.website || fallback;
-  let urls =
-    list?.urls?.length > 0 ? [...list.urls] : [fallback.endsWith('/') ? fallback : `${fallback}/`];
+  let urls;
+  if (scope === 'all' && list?.urls?.length) {
+    urls = [...list.urls];
+  } else {
+    const single = fallback.endsWith('/') ? fallback : `${fallback}/`;
+    urls = [single];
+  }
   const maxUrls = Number(process.env.SITE_MULTI_MAX_URLS) || 0;
   if (maxUrls > 0) urls = urls.slice(0, maxUrls);
 
-  console.log(`${suiteLabel} across ${urls.length} URL(s)`);
+  console.log(`${suiteLabel} · scope=${scope} · ${urls.length} URL(s)`);
   console.log(`Website: ${website}`);
   console.log(`Temp: ${tempRuns}`);
 
@@ -185,7 +192,7 @@ async function main() {
     delete env.npm_config_devdir;
     delete env.NPM_CONFIG_DEVDIR;
 
-    const code = await runPlaywright([testPath], env);
+    const code = await runPlaywright(paths, env);
     const jsonPath = path.join(outDir, 'client-report.json');
 
     if (!fs.existsSync(jsonPath)) {

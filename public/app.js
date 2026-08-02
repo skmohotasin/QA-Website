@@ -5,6 +5,9 @@ const urlListBar = document.querySelector('#url-list-bar');
 const urlListStatus = document.querySelector('#url-list-status');
 const findUrlsBtn = document.querySelector('#find-urls');
 const openUrlListBtn = document.querySelector('#open-url-list');
+const scopeCurrentBtn = document.querySelector('#scope-current');
+const scopeAllBtn = document.querySelector('#scope-all');
+const scopeHint = document.querySelector('#scope-hint');
 const suiteGrid = document.querySelector('#suite-grid');
 const logEl = document.querySelector('#log');
 const stopBtn = document.querySelector('#stop-run');
@@ -19,14 +22,14 @@ const downloadReportTopBtn = document.querySelector('#download-report-top');
 const reportHeading = document.querySelector('#report-heading');
 
 const DESCRIPTIONS = {
-  smoke: 'All saved URLs · page load & content',
+  smoke: 'Page load & content',
   functional: 'Forms, auth, nav, search, cart, filters',
   uiux: 'Responsive layout + accessibility',
   a11y: 'axe WCAG critical / serious',
-  api: 'HTTP health of the base URL',
+  api: 'HTTP health check',
   regression: 'Full retest of all key suites',
   lighthouse: 'Performance, SEO, a11y, best practices',
-  'site-audit': 'Audit saved URL list one by one',
+  'site-audit': 'HTTP, a11y & mobile overflow',
   all: 'Everything on Chromium',
   headed: 'Watch the browser run',
   browsers: 'All engines + mobile',
@@ -37,6 +40,8 @@ let toolsReady = false;
 let latestKind = 'client';
 let latestReport = null;
 let siteUrls = null;
+let runScope = 'current';
+let cachedSuites = [];
 
 function actionEl(name) {
   return document.querySelector(`[data-report-action="${name}"]`);
@@ -60,8 +65,10 @@ function setRunning(isRunning, activeId = null) {
   stopBtn.disabled = !isRunning;
   installBtn.disabled = isRunning;
   if (findUrlsBtn) findUrlsBtn.disabled = isRunning || !toolsReady;
+  if (scopeCurrentBtn) scopeCurrentBtn.disabled = isRunning;
+  if (scopeAllBtn) scopeAllBtn.disabled = isRunning || !siteUrls?.available;
   for (const btn of suiteGrid.querySelectorAll('.btn-suite')) {
-    const needsUrlList = btn.dataset.suite === 'site-audit';
+    const needsUrlList = btn.dataset.suite === 'site-audit' && runScope === 'all';
     btn.disabled =
       isRunning || !toolsReady || (needsUrlList && !siteUrls?.available);
     btn.classList.toggle('is-running', isRunning && btn.dataset.suite === activeId);
@@ -70,9 +77,56 @@ function setRunning(isRunning, activeId = null) {
   urlInput.disabled = isRunning;
 }
 
+function suiteDescription(id) {
+  const base = DESCRIPTIONS[id] || 'Playwright suite';
+  if (id === 'lighthouse') return base;
+  return runScope === 'all' ? `All URLs · ${base}` : `Current URL · ${base}`;
+}
+
+function updateScopeUi() {
+  if (!siteUrls?.available && runScope === 'all') {
+    runScope = 'current';
+  }
+
+  scopeCurrentBtn?.classList.toggle('is-active', runScope === 'current');
+  scopeAllBtn?.classList.toggle('is-active', runScope === 'all');
+
+  if (scopeHint) {
+    scopeHint.textContent =
+      runScope === 'all'
+        ? siteUrls?.available
+          ? `Uses all ${siteUrls.count} saved URL(s)`
+          : 'Find all URLs first to enable this'
+        : 'Uses the saved website URL only';
+  }
+
+  for (const btn of suiteGrid.querySelectorAll('.btn-suite')) {
+    const span = btn.querySelector('span');
+    if (span) span.textContent = suiteDescription(btn.dataset.suite);
+  }
+
+  setRunning(running);
+}
+
+function setRunScope(next) {
+  if (next === 'all' && !siteUrls?.available) {
+    setStatus('Find all URLs first before choosing All URLs', 'err');
+    return;
+  }
+  runScope = next === 'all' ? 'all' : 'current';
+  updateScopeUi();
+  appendLog(
+    `\n▸ Scope: ${runScope === 'all' ? 'All URLs' : 'Current URL'}\n`,
+    'meta',
+  );
+}
+
 function updateSiteUrlsUi(next) {
   siteUrls = next || null;
-  if (!urlListBar || !urlListStatus) return;
+  if (!urlListBar || !urlListStatus) {
+    updateScopeUi();
+    return;
+  }
 
   if (siteUrls?.available) {
     urlListBar.hidden = false;
@@ -87,7 +141,7 @@ function updateSiteUrlsUi(next) {
       'No URL list yet. Click Find all URLs after saving the site.';
   }
 
-  setRunning(running);
+  updateScopeUi();
 }
 
 function downloadFile(url, filename) {
@@ -327,17 +381,19 @@ function updateToolsUi(tools) {
 }
 
 function renderSuites(suites) {
+  cachedSuites = suites || cachedSuites;
   suiteGrid.innerHTML = '';
-  for (const suite of suites) {
+  for (const suite of cachedSuites) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn btn-suite';
     btn.dataset.suite = suite.id;
     btn.disabled = !toolsReady || running;
-    btn.innerHTML = `<strong>${suite.label}</strong><span>${DESCRIPTIONS[suite.id] || 'Playwright suite'}</span>`;
+    btn.innerHTML = `<strong>${suite.label}</strong><span>${suiteDescription(suite.id)}</span>`;
     btn.addEventListener('click', () => runSuite(suite.id));
     suiteGrid.appendChild(btn);
   }
+  updateScopeUi();
 }
 
 async function loadConfig() {
@@ -399,19 +455,27 @@ async function runSuite(suite) {
     setStatus('Install browsers first', 'err');
     return;
   }
+  if (runScope === 'all' && !siteUrls?.available && suite !== 'lighthouse') {
+    setStatus('Find all URLs first, or choose Current URL', 'err');
+    return;
+  }
   const url = urlInput.value.trim();
   setRunning(true, suite);
-  appendLog(`\n▸ Starting ${suite}…\n`, 'meta');
+  appendLog(
+    `\n▸ Starting ${suite} (${runScope === 'all' ? 'All URLs' : 'Current URL'})…\n`,
+    'meta',
+  );
 
   const res = await fetch('/api/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ suite, url }),
+    body: JSON.stringify({ suite, url, scope: runScope }),
   });
   const data = await res.json();
   if (!res.ok) {
     appendLog(`${data.error || 'Failed to start'}\n`, 'err');
     if (data.tools) updateToolsUi(data.tools);
+    if (data.siteUrls) updateSiteUrlsUi(data.siteUrls);
     setRunning(false);
     setStatus(data.error || 'Failed to start', 'err');
   }
@@ -451,7 +515,8 @@ function connectEvents() {
     } else if (data.kind === 'discover-urls') {
       setStatus(`Finding all URLs on ${data.baseURL}`);
     } else {
-      setStatus(`Running ${data.label} on ${data.baseURL}`);
+      const scopeText = data.scope === 'all' ? 'all URLs' : 'current URL';
+      setStatus(`Running ${data.label} on ${scopeText} · ${data.baseURL}`);
     }
   });
 
@@ -549,6 +614,8 @@ function connectEvents() {
 
 urlForm.addEventListener('submit', saveUrl);
 findUrlsBtn?.addEventListener('click', findAllUrls);
+scopeCurrentBtn?.addEventListener('click', () => setRunScope('current'));
+scopeAllBtn?.addEventListener('click', () => setRunScope('all'));
 stopBtn.addEventListener('click', stopRun);
 installBtn.addEventListener('click', installTools);
 clearBtn.addEventListener('click', () => {

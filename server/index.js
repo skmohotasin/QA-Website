@@ -294,7 +294,7 @@ function filterLogNoise(text) {
     .join('\n');
 }
 
-function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner }) {
+function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner, scope }) {
   if (activeRun) {
     return { ok: false, error: 'Another task is already in progress' };
   }
@@ -312,6 +312,7 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner }) {
   // Keep worker startup quiet in the web console.
   env.NODE_NO_WARNINGS = '1';
   if (baseURL) env.BASE_URL = baseURL;
+  env.SITE_RUN_SCOPE = scope === 'all' ? 'all' : 'current';
 
   fs.mkdirSync(browsersDir, { recursive: true });
 
@@ -341,6 +342,7 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner }) {
     suite: suiteKey,
     label,
     kind,
+    scope: env.SITE_RUN_SCOPE,
     baseURL: baseURL || readBaseUrl(),
   });
 
@@ -396,19 +398,49 @@ function spawnPlaywright(args, { baseURL, label, suiteKey, kind, runner }) {
   return { ok: true, suite: suiteKey, label, kind };
 }
 
-function runSuite(suiteKey) {
+function runSuite(suiteKey, { scope = 'current' } = {}) {
   const suite = SUITES[suiteKey];
   if (!suite) {
     return { ok: false, error: 'Unknown suite' };
   }
 
+  const runScope = scope === 'all' ? 'all' : 'current';
   const tools = getToolsStatus();
   const chromium = tools.browsers.find((b) => b.id === 'chromium');
+  const urls = getSiteUrlsStatus();
+
+  let runner = suite.runner;
+  let args = suite.args;
+
+  // Lighthouse always uses the current saved URL.
+  const effectiveScope =
+    suite.runner === 'lighthouse' || suite.runner === 'discover-urls'
+      ? 'current'
+      : runScope;
+
+  // When All URLs is selected, normal Playwright suites run via the multi-URL runner.
   if (
-    suite.runner === 'lighthouse' ||
-    suite.runner === 'site-audit' ||
-    suite.runner === 'discover-urls' ||
-    suite.runner === 'multi-url'
+    effectiveScope === 'all' &&
+    !suite.runner &&
+    Array.isArray(suite.args) &&
+    suite.args[0] === 'test'
+  ) {
+    const testPaths = suite.args.filter(
+      (a) => a !== 'test' && !String(a).startsWith('--'),
+    );
+    runner = 'multi-url';
+    args = [
+      path.join(root, 'scripts', 'run-multi-url-suite.mjs'),
+      suiteKey,
+      ...(testPaths.length ? testPaths : ['tests']),
+    ];
+  }
+
+  if (
+    runner === 'lighthouse' ||
+    runner === 'site-audit' ||
+    runner === 'discover-urls' ||
+    runner === 'multi-url'
   ) {
     if (!chromium?.installed) {
       return {
@@ -427,32 +459,32 @@ function runSuite(suiteKey) {
     };
   }
 
-  if (suite.runner === 'site-audit' || suite.runner === 'multi-url') {
-    const urls = getSiteUrlsStatus();
-    if (suite.runner === 'site-audit' && !urls.available) {
+  if (effectiveScope === 'all' && (runner === 'site-audit' || runner === 'multi-url')) {
+    if (!urls.available) {
       return {
         ok: false,
         error:
-          'No URL list yet. Click "Find all URLs" first to crawl and save data/site-urls.json.',
+          'No URL list yet. Click "Find all URLs" first, or choose Current URL.',
         tools,
         siteUrls: urls,
       };
     }
   }
 
-  return spawnPlaywright(suite.args, {
+  return spawnPlaywright(args, {
     baseURL: readBaseUrl(),
     label: suite.label,
     suiteKey,
     kind:
-      suite.runner === 'lighthouse'
+      runner === 'lighthouse'
         ? 'lighthouse'
-        : suite.runner === 'site-audit'
+        : runner === 'site-audit'
           ? 'site-audit'
-          : suite.runner === 'discover-urls'
+          : runner === 'discover-urls'
             ? 'discover-urls'
             : 'test',
-    runner: suite.runner,
+    runner,
+    scope: effectiveScope,
   });
 }
 
@@ -574,7 +606,9 @@ const server = http.createServer(async (req, res) => {
       }
       writeBaseUrl(body.url);
     }
-    const result = runSuite(body.suite || 'all');
+    const result = runSuite(body.suite || 'all', {
+      scope: body.scope === 'all' ? 'all' : 'current',
+    });
     return sendJson(res, result.ok ? 200 : 409, result);
   }
 

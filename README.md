@@ -29,10 +29,10 @@ npm run stop
 1. If browsers are missing, click **Install browsers** (downloads into `.playwright/`, gitignored).
 2. Paste a website URL and click **Save URL**.
 3. Click **Find all URLs** to crawl the site (and sitemap) and save `data/site-urls.json`.
-4. Click **Audit entire site** to audit that saved list one URL at a time (per-URL report + cache clear between pages).
-5. Click **Smoke** to run smoke checks on every saved URL one by one, then download one combined Summary + Full report.
-6. Run other suites (Functional, A11y, API, etc.) as needed. Live output streams on the page.
-7. Use **Lighthouse** separately for Performance / SEO / Best Practices / Accessibility scores.
+3. Choose **Current URL** (saved site only) or **All URLs** (saved list from Find all URLs).
+4. Click **Audit entire site** or a suite like **Smoke**. Live output streams on the page.
+5. Download Summary / Full reports when the run finishes.
+6. Use **Lighthouse** for Performance / SEO / Best Practices / Accessibility scores (always current URL).
 
 Client reports are written to `reports/client-report.html` and `reports/client-report.md`.  
 Lighthouse reports: `reports/lighthouse-summary.html` (simple) and `reports/lighthouse-full.html` (full detail).  

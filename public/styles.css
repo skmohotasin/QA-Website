@@ -360,6 +360,48 @@ body {
   font-size: 1.25rem;
 }
 
+.scope-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin: -0.25rem 0 1rem;
+}
+
+.scope-label {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-right: 0.15rem;
+}
+
+.scope-hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.btn-scope {
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 0.45rem 0.85rem;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-scope.is-active {
+  border-color: rgba(15, 118, 110, 0.55);
+  background: rgba(15, 118, 110, 0.12);
+  color: var(--accent-deep);
+}
+
+.btn-scope:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .suite-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
