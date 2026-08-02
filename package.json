@@ -1,0 +1,29 @@
+{
+  "name": "qa-website",
+  "version": "1.0.0",
+  "description": "Automated website QA with Playwright",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:chromium": "playwright test --project=chromium",
+    "test:report": "playwright show-report",
+    "test:codegen": "playwright codegen"
+  },
+  "keywords": [
+    "qa",
+    "playwright",
+    "e2e",
+    "automation"
+  ],
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.1.2",
+    "dotenv": "^17.2.1",
+    "typescript": "^7.0.2"
+  }
+}
