@@ -12,10 +12,19 @@ cp .env.example .env
 
 Edit `.env` and set `BASE_URL` to the site you want to test.
 
-## Run tests
+## Web console
+
+```bash
+npm start
+```
+
+Open **http://localhost:4173** — paste a website URL, then click a suite button (Smoke, Accessibility, API, All, Headed, All browsers). Live output streams in the page.
+
+## Run tests (CLI)
 
 | Command | What it does |
 |---------|----------------|
+| `npm start` | Open the web console |
 | `npm test` | Run all tests (Chromium, Firefox, WebKit, mobile) |
 | `npm run test:chromium` | Chromium only (faster local loop) |
 | `npm run test:ui` | Interactive Playwright UI |
