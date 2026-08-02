@@ -172,12 +172,20 @@ function getClientReport() {
     }
   }
 
-  const updatedAt = hasClient
-    ? fs.statSync(html).mtime.toISOString()
-    : fs.statSync(lighthouseSummary).mtime.toISOString();
+  const clientMtime = hasClient ? fs.statSync(html).mtimeMs : 0;
+  const lighthouseMtime = hasLighthouse
+    ? fs.statSync(lighthouseSummary).mtimeMs
+    : 0;
+  const latestKind =
+    lighthouseMtime > clientMtime ? 'lighthouse' : hasClient ? 'client' : 'lighthouse';
+
+  const updatedAt = new Date(
+    Math.max(clientMtime, lighthouseMtime),
+  ).toISOString();
 
   return {
     available: true,
+    latestKind,
     htmlUrl: hasClient ? '/reports/client-report.html' : null,
     mdUrl: hasClient ? '/reports/client-report.md' : null,
     jsonUrl: hasClient ? '/reports/client-report.json' : null,
