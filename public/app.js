@@ -8,11 +8,11 @@ const clearBtn = document.querySelector('#clear-log');
 
 const DESCRIPTIONS = {
   smoke: 'Page load & basic content',
-  a11y: 'axe WCAG critical / serious',
+  a11y: 'Accessibility · axe WCAG checks',
   api: 'HTTP health of the base URL',
-  all: 'Smoke + a11y + API (Chromium)',
-  headed: 'Watch the browser while testing',
-  browsers: 'Chromium, Firefox, WebKit, mobile',
+  all: 'Smoke + a11y + API',
+  headed: 'Watch the browser run',
+  browsers: 'All engines + mobile',
 };
 
 let running = false;

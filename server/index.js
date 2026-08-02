@@ -22,7 +22,7 @@ const SUITES = {
     args: ['test', 'tests/smoke', '--project=chromium'],
   },
   a11y: {
-    label: 'Accessibility',
+    label: 'A11y',
     args: ['test', 'tests/a11y', '--project=chromium'],
   },
   api: {

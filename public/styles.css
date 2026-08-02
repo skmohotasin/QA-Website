@@ -183,8 +183,8 @@ body {
 
 .suite-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
 }
 
 .btn {
@@ -225,23 +225,39 @@ body {
   border-color: var(--line);
   color: var(--ink);
   text-align: left;
-  min-height: 74px;
+  min-width: 0;
+  min-height: 88px;
+  height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 0.2rem;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 1rem 1.05rem;
+  overflow: hidden;
 }
 
 .btn-suite strong {
+  display: block;
+  width: 100%;
   font-family: var(--font-display);
-  font-size: 1.02rem;
-  letter-spacing: -0.02em;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
 }
 
 .btn-suite span {
+  display: block;
+  width: 100%;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: break-word;
 }
 
 .btn-suite:hover:not(:disabled) {
@@ -301,8 +317,18 @@ body {
   }
 }
 
+@media (max-width: 860px) {
+  .suite-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 640px) {
   .url-form {
+    grid-template-columns: 1fr;
+  }
+
+  .suite-grid {
     grid-template-columns: 1fr;
   }
 
